@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+demo/out/
+demo/voices/
+
+# Supabase CLI local state — link target, cached versions. Machine-specific,
+# not part of the project.
+supabase/.temp/

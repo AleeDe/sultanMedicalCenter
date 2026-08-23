@@ -1,0 +1,56 @@
+[
+  {
+    "id": "01",
+    "roman": "Yeh hai aap ke clinic ka Token aur Billing system. Reception se lekar bill tak, sab kuch ek jagah.",
+    "urdu": "یہ ہے آپ کے کلینک کا ٹوکن اور بلنگ سسٹم۔ ریسیپشن سے لے کر بل تک، سب کچھ ایک جگہ۔",
+    "v3": "[warm] یہ ہے آپ کے کلینک کا ٹوکن اور بلنگ سسٹم۔ ریسیپشن سے لے کر بل تک... سب کچھ ایک ہی جگہ۔"
+  },
+  {
+    "id": "02",
+    "roman": "Sab se pehle, patient normal hai ya emergency. Ek click, aur poori screen ka rang badal jata hai. Door se bhi pata chal jata hai ke emergency token ban raha hai.",
+    "urdu": "سب سے پہلے، مریض نارمل ہے یا ایمرجنسی۔ ایک کلک، اور پوری اسکرین کا رنگ بدل جاتا ہے۔ دور سے بھی پتہ چل جاتا ہے کہ ایمرجنسی ٹوکن بن رہا ہے۔",
+    "v3": "سب سے پہلے... مریض نارمل ہے، یا ایمرجنسی؟ [excited] بس ایک کلک، اور پوری اسکرین کا رنگ بدل جاتا ہے۔ دور سے بھی پتہ چل جاتا ہے کہ ایمرجنسی ٹوکن بن رہا ہے۔"
+  },
+  {
+    "id": "03",
+    "roman": "Purana patient hai? Sirf phone number daalein. Naam, umar, sab kuch khud bhar jata hai. Dobara likhne ki zaroorat nahi.",
+    "urdu": "پرانا مریض ہے؟ صرف فون نمبر ڈالیں۔ نام، عمر، سب کچھ خود بھر جاتا ہے۔ دوبارہ لکھنے کی ضرورت نہیں۔",
+    "v3": "[curious] پرانا مریض ہے؟ صرف فون نمبر ڈالیں۔ نام، عمر... سب کچھ خود بھر جاتا ہے۔ [warm] دوبارہ لکھنے کی ضرورت ہی نہیں۔"
+  },
+  {
+    "id": "04",
+    "roman": "Doctor chunein. Naam, speciality aur room number. Yeh sab parchi par print hota hai, to patient ko pata hota hai kahan jana hai.",
+    "urdu": "ڈاکٹر چنیں۔ نام، اسپیشلٹی اور روم نمبر۔ یہ سب پرچی پر پرنٹ ہوتا ہے، تو مریض کو پتہ ہوتا ہے کہاں جانا ہے۔",
+    "v3": "پھر ڈاکٹر چنیں۔ نام، اسپیشلٹی، اور روم نمبر۔ یہ سب پرچی پر پرنٹ ہوتا ہے... تو مریض کو پتہ ہوتا ہے کہ جانا کہاں ہے۔"
+  },
+  {
+    "id": "05",
+    "roman": "Agar doctor ne test likhe hain, wo abhi add kar dein. Blood test, X-ray, jo bhi chahiye. Total khud jama ho jata hai. Patient ek dafa paisay deta hai, ek hi parchi milti hai.",
+    "urdu": "اگر ڈاکٹر نے ٹیسٹ لکھے ہیں، وہ ابھی ایڈ کر دیں۔ بلڈ ٹیسٹ، ایکسرے، جو بھی چاہیے۔ ٹوٹل خود جمع ہو جاتا ہے۔ مریض ایک دفعہ پیسے دیتا ہے، ایک ہی پرچی ملتی ہے۔",
+    "v3": "اگر ڈاکٹر نے ٹیسٹ لکھے ہیں، وہ ابھی ایڈ کر دیں۔ بلڈ ٹیسٹ، ایکسرے... جو بھی چاہیے۔ [excited] ٹوٹل خود جمع ہو جاتا ہے! مریض ایک دفعہ پیسے دیتا ہے، اور ایک ہی پرچی ملتی ہے۔"
+  },
+  {
+    "id": "06",
+    "roman": "Token banayein. Number itna bara ke door se parha jaye, aur parchi apne aap print ho jati hai.",
+    "urdu": "ٹوکن بنائیں۔ نمبر اتنا بڑا کہ دور سے پڑھا جائے، اور پرچی اپنے آپ پرنٹ ہو جاتی ہے۔",
+    "v3": "اور بس... ٹوکن تیار۔ [excited] نمبر اتنا بڑا کہ دور سے پڑھا جائے، اور پرچی اپنے آپ پرنٹ ہو جاتی ہے۔"
+  },
+  {
+    "id": "07",
+    "roman": "Baad me koi test add karna ho, to Billing me jayein. Har item alag alag. Abhi paisay lein ya baad me. Aakhir me ek bill, ek total.",
+    "urdu": "بعد میں کوئی ٹیسٹ ایڈ کرنا ہو، تو بلنگ میں جائیں۔ ہر آئٹم الگ الگ۔ ابھی پیسے لیں یا بعد میں۔ آخر میں ایک بل، ایک ٹوٹل۔",
+    "v3": "بعد میں کوئی ٹیسٹ ایڈ کرنا ہو؟ تو بلنگ میں جائیں۔ ہر آئٹم الگ الگ... ابھی پیسے لیں، یا بعد میں۔ [warm] آخر میں ایک بل، ایک ٹوٹل۔"
+  },
+  {
+    "id": "08",
+    "roman": "Aur malik ke liye, poora hisaab. Kitni aamdani hui, kitne mareez aaye, kaun sa doctor kitna busy raha, aur kaun se test sab se zyada chalte hain. Har number pichle mahine se muqabla kar ke dikhaya jata hai.",
+    "urdu": "اور مالک کے لیے، پورا حساب۔ کتنی آمدنی ہوئی، کتنے مریض آئے، کون سا ڈاکٹر کتنا مصروف رہا، اور کون سے ٹیسٹ سب سے زیادہ چلتے ہیں۔ ہر نمبر پچھلے مہینے سے مقابلہ کر کے دکھایا جاتا ہے۔",
+    "v3": "[thoughtful] اور مالک کے لیے... پورا حساب۔ کتنی آمدنی ہوئی، کتنے مریض آئے، کون سا ڈاکٹر کتنا مصروف رہا، اور کون سے ٹیسٹ سب سے زیادہ چلتے ہیں۔ ہر نمبر پچھلے مہینے سے مقابلہ کر کے دکھایا جاتا ہے۔"
+  },
+  {
+    "id": "09",
+    "roman": "Tez, saaf, aur seekhne me asaan. Aap ke clinic ke liye tayyar.",
+    "urdu": "تیز، صاف، اور سیکھنے میں آسان۔ آپ کے کلینک کے لیے تیار۔",
+    "v3": "[warm] تیز، صاف، اور سیکھنے میں آسان۔ آپ کے کلینک کے لیے... تیار ہے۔"
+  }
+]

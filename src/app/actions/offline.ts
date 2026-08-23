@@ -1,0 +1,223 @@
+"use server";
+
+import { z } from "zod";
+import { sql } from "@/lib/db";
+import type { ActionResult } from "@/app/actions/tokens";
+
+/*
+  Server side of the offline path.
+
+  Two operations only: acquire a block of numbers while the connection is up,
+  and replay a queued write once it returns. Everything that makes this safe
+  lives in the database — the lease advances the shared counter, and every
+  write is keyed on a client UUID the server upserts on.
+*/
+
+export type LeasedBlock = {
+  leaseId: number;
+  seriesId: number;
+  code: string;
+  seqFrom: number;
+  seqTo: number;
+  forDate: string;
+};
+
+const leaseSchema = z.object({
+  counterId: z.string().trim().min(1).max(40),
+  seriesId: z.coerce.number().int().positive(),
+  size: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+/**
+ * Reserves a block of token numbers for one counter.
+ *
+ * The block is genuinely reserved: leasing advances the same token_counter
+ * the online path draws from, so the server cannot hand these numbers to
+ * anyone else. That is what makes an offline token safe to print.
+ */
+export async function leaseBlock(
+  input: z.input<typeof leaseSchema>,
+): Promise<ActionResult<LeasedBlock>> {
+  const parsed = leaseSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid lease request." };
+  const v = parsed.data;
+
+  try {
+    const [row] = await sql<
+      {
+        lease_id: number;
+        seq_from: number;
+        seq_to: number;
+        code: string;
+        for_date: string;
+      }[]
+    >`select * from lease_token_block(${v.counterId}, ${v.seriesId}, ${v.size})`;
+
+    return {
+      ok: true,
+      data: {
+        leaseId: row.lease_id,
+        seriesId: v.seriesId,
+        code: row.code,
+        seqFrom: row.seq_from,
+        seqTo: row.seq_to,
+        forDate:
+          typeof row.for_date === "string"
+            ? row.for_date
+            : new Date(row.for_date).toISOString().slice(0, 10),
+      },
+    };
+  } catch (err) {
+    console.error("leaseBlock failed", err);
+    return { ok: false, error: "Could not reserve token numbers." };
+  }
+}
+
+/* ------------------------------------------------------------------ sync */
+
+const syncSchema = z.object({
+  clientUuid: z.string().uuid(),
+  visitUuid: z.string().uuid(),
+  patientUuid: z.string().uuid().nullable(),
+  patientId: z.coerce.number().int().positive().nullable(),
+  name: z.string().trim().min(1).max(120),
+  phone: z.string().trim().max(20).default(""),
+  gender: z.enum(["MALE", "FEMALE", "OTHER"]),
+  age: z.coerce.number().int().min(0).max(130).nullable(),
+  address: z.string().trim().max(200).default(""),
+  seriesId: z.coerce.number().int().positive(),
+  doctorId: z.coerce.number().int().positive().nullable(),
+  staffId: z.coerce.number().int().positive().nullable(),
+  fee: z.coerce.number().min(0),
+  serviceIds: z.array(z.coerce.number().int().positive()).default([]),
+  seq: z.coerce.number().int().positive(),
+  leaseId: z.coerce.number().int().positive().nullable(),
+  issuedAt: z.string(),
+});
+
+export type SyncTokenInput = z.input<typeof syncSchema>;
+
+/**
+ * Replays one token that was issued offline.
+ *
+ * Safe to call repeatedly with the same clientUuid: issue_token returns the
+ * existing row rather than creating a second, which is what lets the client
+ * retry a queued write without first asking whether it landed.
+ */
+export async function syncToken(
+  input: SyncTokenInput,
+): Promise<ActionResult<{ display_no: string; alreadyPresent: boolean }>> {
+  const parsed = syncSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "This queued token could not be read." };
+  }
+  const v = parsed.data;
+
+  try {
+    return await sql.begin(async (tx) => {
+      const [before] = await tx<{ id: number }[]>`
+        select id from token where client_uuid = ${v.clientUuid}
+      `;
+      if (before) {
+        const [t] = await tx<{ display_no: string }[]>`
+          select display_no from token where client_uuid = ${v.clientUuid}
+        `;
+        return {
+          ok: true as const,
+          data: { display_no: t.display_no, alreadyPresent: true },
+        };
+      }
+
+      /*
+        Resolve the patient.
+
+        A patient created offline carries a client UUID and has no MRN yet —
+        the MRN series is server-owned and must stay gapless, so it is
+        assigned here rather than invented on the client.
+      */
+      let patientId = v.patientId;
+      if (!patientId && v.patientUuid) {
+        const [existing] = await tx<{ id: number }[]>`
+          select id from patient where client_uuid = ${v.patientUuid}
+        `;
+        patientId = existing?.id ?? null;
+      }
+
+      if (!patientId) {
+        const [{ next_mrn: mrn }] = await tx<{ next_mrn: string }[]>`
+          select next_mrn()
+        `;
+        const [created] = await tx<{ id: number }[]>`
+          insert into patient (mrn, name, phone, gender, age_years, address,
+                               client_uuid)
+          values (${mrn}, ${v.name}, ${v.phone}, ${v.gender}, ${v.age},
+                  ${v.address}, ${v.patientUuid})
+          on conflict (client_uuid) where client_uuid is not null
+          do update set name = excluded.name
+          returning id
+        `;
+        patientId = created.id;
+      }
+
+      const [tok] = await tx<
+        { token_id: number; visit_id: number; display_no: string }[]
+      >`
+        select * from issue_token(${patientId}, ${v.seriesId}, ${v.staffId},
+                                  ${v.doctorId}, ${v.seq}, ${v.clientUuid},
+                                  ${v.visitUuid}, ${v.issuedAt}::timestamptz,
+                                  ${v.leaseId})
+      `;
+
+      const [series] = await tx<{ label: string }[]>`
+        select label from token_series where id = ${v.seriesId}
+      `;
+
+      await tx`
+        insert into visit_item (visit_id, service_id, name_snapshot,
+                                unit_price_snapshot, qty, status, added_by)
+        values (${tok.visit_id}, null, ${series.label + " Fee"}, ${v.fee}, 1,
+                'PAID', ${v.staffId})
+      `;
+
+      if (v.serviceIds.length > 0) {
+        const chosen = await tx<
+          { id: number; name: string; price: string }[]
+        >`select id, name, price from service
+           where id in ${tx(v.serviceIds)} and active`;
+        for (const s of chosen) {
+          await tx`
+            insert into visit_item (visit_id, service_id, name_snapshot,
+                                    unit_price_snapshot, qty, status, added_by)
+            values (${tok.visit_id}, ${s.id}, ${s.name}, ${s.price}, 1,
+                    'PAID', ${v.staffId})
+          `;
+        }
+      }
+
+      const detail = tx.json({
+        display_no: tok.display_no,
+        offline: true,
+        issued_at: v.issuedAt,
+      });
+      await tx`
+        insert into audit_log (actor, action, entity, entity_id, after)
+        values ('Reception', 'SYNC_OFFLINE_TOKEN', 'token',
+                ${String(tok.token_id)}, ${detail})
+      `;
+
+      return {
+        ok: true as const,
+        data: { display_no: tok.display_no, alreadyPresent: false },
+      };
+    });
+  } catch (err) {
+    console.error("syncToken failed", err);
+    return { ok: false, error: "Could not sync this token." };
+  }
+}
+
+/** Cheap round-trip used to tell a real outage from a slow page. */
+export async function ping(): Promise<{ ok: true; at: string }> {
+  await sql`select 1`;
+  return { ok: true, at: new Date().toISOString() };
+}

@@ -1,0 +1,427 @@
+"use client";
+
+import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  callNext,
+  finishConsultation,
+  getQueues,
+  recallToken,
+  setDoctorState,
+  skipToken,
+  startConsultation,
+  type DoctorQueue,
+  type QueueRow,
+} from "@/app/actions/queue";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  DoctorAvatar,
+  Empty,
+  GroupLabel,
+} from "@/components/ui";
+import {
+  IconAmbulance,
+  IconCheck,
+  IconCross,
+} from "@/components/icons";
+
+/*
+  The queue screen.
+
+  One component serves both reception and the doctor — the clinic decides who
+  presses the button, not the software. Reception sees every doctor; a signed-
+  in doctor sees only their own room, with the actions made large enough to
+  hit on a tablet without looking.
+
+  The primary action is deliberately singular: "Call next" also finishes
+  whoever was in the room. Doctors forget to press Done, and every
+  consultation time — and therefore every wait estimate — depends on that
+  timestamp.
+*/
+
+export function QueueBoard({
+  initial,
+  doctorId,
+  compact,
+}: {
+  initial: DoctorQueue[];
+  /** When set, only this doctor's queue is shown (the doctor's own view). */
+  doctorId?: number;
+  compact?: boolean;
+}) {
+  const [queues, setQueues] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const refresh = useCallback(async () => {
+    try {
+      setQueues(await getQueues(doctorId));
+    } catch {
+      // A dropped connection should not blank the screen — the last known
+      // queue is still the best information available.
+    }
+  }, [doctorId]);
+
+  // Reception and the doctor act on the same queue from different machines,
+  // so a poll is what keeps them from working off a stale list.
+  useEffect(() => {
+    const t = setInterval(() => void refresh(), 10_000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  const run = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
+    start(async () => {
+      setError(null);
+      const res = await fn();
+      if (!res.ok) setError(res.error ?? "Something went wrong.");
+      await refresh();
+    });
+
+  /*
+    Reception watches four doctors at once, so the panels tile into columns
+    rather than stacking: "who is free, where is the backlog" has to be
+    answerable in one look, and a 2200px scroll makes that a search task.
+    The doctor's own view keeps a single column — one queue, on a tablet,
+    where a second column would only shrink the targets.
+  */
+  const single = doctorId != null || queues.length === 1;
+
+  return (
+    <div className="grid gap-4">
+      {error && <Alert>{error}</Alert>}
+
+      {queues.length === 0 && (
+        <Card>
+          <Empty>No active doctors.</Empty>
+        </Card>
+      )}
+
+      <div
+        className={
+          single
+            ? "grid gap-4"
+            : "grid gap-4 lg:grid-cols-2 lg:items-start"
+        }
+      >
+      {queues.map((q) => (
+        <DoctorPanel
+          key={q.doctorId}
+          q={q}
+          compact={compact}
+          pending={pending}
+          onCall={() => run(() => callNext(q.doctorId))}
+          onStart={(id) => run(() => startConsultation(id))}
+          onFinish={(id) => run(() => finishConsultation(id))}
+          onSkip={(id) => run(() => skipToken(id))}
+          onRecall={(id) => run(() => recallToken(id))}
+          onState={(state, minutes) =>
+            run(() => setDoctorState({ doctorId: q.doctorId, state, minutes }))
+          }
+        />
+      ))}
+      </div>
+    </div>
+  );
+}
+
+function DoctorPanel({
+  q,
+  compact,
+  pending,
+  onCall,
+  onStart,
+  onFinish,
+  onSkip,
+  onRecall,
+  onState,
+}: {
+  q: DoctorQueue;
+  compact?: boolean;
+  pending: boolean;
+  onCall: () => void;
+  onStart: (id: number) => void;
+  onFinish: (id: number) => void;
+  onSkip: (id: number) => void;
+  onRecall: (id: number) => void;
+  onState: (s: "AVAILABLE" | "ON_BREAK" | "FINISHED", m: number | null) => void;
+}) {
+  const onBreak = q.state === "ON_BREAK";
+  const nobodyLeft = q.waiting.length === 0 && q.called.length === 0;
+
+  return (
+    <Card className="overflow-hidden">
+      {/* Who, where, and how they are doing today */}
+      <div className="border-b border-[var(--line)] p-4">
+        <div className="flex items-center gap-3">
+          <DoctorAvatar name={q.doctorName} />
+          <div className="min-w-0 flex-1">
+            {/*
+              The name identifies the whole panel, so it wraps rather than
+              truncating — "Dr. Ahme…" on a queue screen with four doctors is
+              a genuine ambiguity, not a cosmetic one.
+            */}
+            <p className="text-head font-bold leading-tight">{q.doctorName}</p>
+            <p className="truncate text-label text-muted">
+              {q.speciality}
+              {q.room ? ` · ${q.room}` : ""}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Badge tone="neutral">{q.seenToday} seen</Badge>
+          <Badge tone="neutral">~{q.typicalMinutes} min each</Badge>
+          {onBreak ? (
+            <Badge tone="danger">
+              On break
+              {q.expectedReturnAt
+                ? ` · back ${new Date(q.expectedReturnAt).toLocaleTimeString(
+                    "en-GB",
+                    { hour: "2-digit", minute: "2-digit", hour12: true },
+                  )}`
+                : ""}
+            </Badge>
+          ) : q.state === "FINISHED" ? (
+            <Badge tone="neutral">Finished for today</Badge>
+          ) : (
+            <Badge tone="ok">Available</Badge>
+          )}
+        </div>
+      </div>
+
+      {/* In the room now */}
+      <div className="border-b border-[var(--line)] bg-sunken p-4">
+        {q.current ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="tnum rounded-[10px] bg-[var(--ok-soft)] px-3 py-2 font-mono text-lg font-bold text-[var(--ok)]">
+              {q.current.display_no}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-semibold">{q.current.patient_name}</p>
+              <p className="text-sm text-muted">
+                In consultation
+                {q.current.started_at && (
+                  <> · {elapsed(q.current.started_at)}</>
+                )}
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              disabled={pending}
+              onClick={() => onFinish(q.current!.token_id)}
+            >
+              <IconCheck className="h-[18px] w-[18px]" />
+              Done
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">Nobody in the room.</p>
+        )}
+      </div>
+
+      {/* Called but not yet started */}
+      {q.called.length > 0 && (
+        <div className="border-b border-[var(--line)] p-4">
+          <GroupLabel>Called — waiting to come in</GroupLabel>
+          <ul className="grid gap-2">
+            {q.called.map((r) => (
+              <li
+                key={r.token_id}
+                className="flex flex-wrap items-center gap-2.5 rounded-[var(--r-sm)] border border-[var(--line)] p-2.5"
+              >
+                <TokenChip row={r} />
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {r.patient_name}
+                </span>
+                <Button
+                  variant="primary"
+                  disabled={pending}
+                  onClick={() => onStart(r.token_id)}
+                >
+                  Start
+                </Button>
+                <Button
+                  variant="danger"
+                  disabled={pending}
+                  onClick={() => onSkip(r.token_id)}
+                  title="Patient did not appear — they can be recalled"
+                >
+                  Not here
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* The primary action */}
+      <div className="border-b border-[var(--line)] p-4">
+        <Button
+          variant="primary"
+          size={compact ? "xl" : "lg"}
+          className="w-full"
+          disabled={pending || nobodyLeft}
+          onClick={onCall}
+        >
+          {nobodyLeft ? "Queue is empty" : "Call next patient"}
+        </Button>
+        {!nobodyLeft && q.current && (
+          <p className="mt-2 text-center text-xs text-muted">
+            This also marks {q.current.display_no} as done
+          </p>
+        )}
+      </div>
+
+      {/* Waiting */}
+      <div className="p-4">
+        <GroupLabel hint={`${q.waiting.length} waiting`}>Queue</GroupLabel>
+        {q.waiting.length === 0 ? (
+          <p className="py-3 text-center text-body text-muted">Nobody waiting.</p>
+        ) : (
+          <ul className="grid gap-1.5">
+            {q.waiting.map((r) => (
+              <li
+                key={r.token_id}
+                className={`flex flex-wrap items-center gap-2.5 rounded-[var(--r-sm)] border p-2.5 ${
+                  r.is_emergency
+                    ? "border-[var(--danger)] bg-[var(--danger-soft)]"
+                    : "border-[var(--line)]"
+                }`}
+              >
+                <span className="tnum w-7 shrink-0 text-center text-sm font-bold text-muted">
+                  {r.queue_pos}
+                </span>
+                <TokenChip row={r} />
+                <span className="min-w-0 flex-1 truncate">
+                  {r.patient_name}
+                </span>
+                <Badge tone={r.eta_minutes > 30 ? "gold" : "neutral"}>
+                  ~{r.eta_minutes} min
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Skipped — recoverable, and kept visible so they are not forgotten */}
+      {q.skipped.length > 0 && (
+        <div className="border-t border-[var(--line)] p-4">
+          <GroupLabel>Did not appear</GroupLabel>
+          <ul className="grid gap-1.5">
+            {q.skipped.map((r) => (
+              <li
+                key={r.token_id}
+                className="flex flex-wrap items-center gap-2.5 rounded-[var(--r-sm)] bg-sunken p-2.5"
+              >
+                <TokenChip row={r} />
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  {r.patient_name}
+                </span>
+                <span className="text-xs text-muted">
+                  {r.status === "NO_SHOW" ? "No show" : "Stepped out"}
+                </span>
+                <Button
+                  disabled={pending}
+                  onClick={() => onRecall(r.token_id)}
+                  className="h-9 px-3 text-xs"
+                  style={{ minHeight: 36 }}
+                >
+                  Back in queue
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/*
+        Availability.
+
+        Going on a break is a once-or-twice-a-day action sitting on a screen
+        whose whole job is calling the next patient, so it stays folded away —
+        four panels each showing three idle Break buttons is pure noise, and
+        noise is what makes the important control hard to find.
+
+        Coming BACK is not folded away: a doctor whose queue is frozen needs
+        that button immediately, and it is the one state where the panel is
+        actively misleading until pressed.
+      */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-[var(--line)] bg-sunken px-3 py-2">
+        {onBreak ? (
+          <Button
+            variant="ok"
+            disabled={pending}
+            onClick={() => onState("AVAILABLE", null)}
+            className="h-9 px-3 text-xs"
+            style={{ minHeight: 36 }}
+          >
+            I&apos;m back
+          </Button>
+        ) : (
+          <details className="group w-full">
+            <summary
+              className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-[var(--r-sm)]
+                px-2 py-1.5 text-micro font-semibold text-muted transition-colors
+                hover:bg-[var(--hover)] hover:text-[var(--accent)]"
+            >
+              Availability
+              <span
+                aria-hidden
+                className="transition-transform duration-[var(--dur-fast)] group-open:rotate-90"
+              >
+                ›
+              </span>
+            </summary>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+            {[10, 20, 30].map((m) => (
+              <Button
+                key={m}
+                disabled={pending}
+                onClick={() => onState("ON_BREAK", m)}
+                className="h-9 px-3 text-xs"
+                style={{ minHeight: 36 }}
+                title={`Waiting patients will be told you are back in ${m} minutes`}
+              >
+                Break {m}m
+              </Button>
+            ))}
+            <Button
+              variant="danger"
+              disabled={pending}
+              onClick={() => onState("FINISHED", null)}
+              className="ml-auto h-9 px-3 text-xs"
+              style={{ minHeight: 36 }}
+            >
+              <IconCross className="h-3.5 w-3.5" />
+              Finished for today
+            </Button>
+            </div>
+          </details>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function TokenChip({ row }: { row: QueueRow }) {
+  return (
+    <span
+      className={`tnum inline-flex shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 font-mono text-sm font-bold ${
+        row.is_emergency
+          ? "bg-[var(--danger-soft)] text-[var(--danger)]"
+          : "bg-[var(--accent-soft)] text-[var(--accent)]"
+      }`}
+    >
+      {row.is_emergency && <IconAmbulance className="h-4 w-4" />}
+      {row.display_no}
+    </span>
+  );
+}
+
+function elapsed(since: string): string {
+  const mins = Math.max(0, Math.round((Date.now() - Date.parse(since)) / 60000));
+  return mins < 1 ? "just started" : `${mins} min so far`;
+}

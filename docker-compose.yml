@@ -1,0 +1,26 @@
+# Local development database.
+# Mirrors the Supabase Postgres this ships to, so migrations written here
+# apply unchanged in production.
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: tokgen-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tokgen
+      TZ: Asia/Karachi
+      PGTZ: Asia/Karachi
+    ports:
+      - "5433:5432"   # 5433 on the host, to avoid clashing with any local Postgres
+    volumes:
+      - tokgen-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tokgen"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  tokgen-data:

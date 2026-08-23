@@ -6,20 +6,34 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "migrate": "node --env-file=.env.local scripts/migrate.mjs",
+    "test:concurrency": "node --env-file=.env.local scripts/test-concurrency.mjs",
+    "test:flow": "node --env-file=.env.local scripts/test-flow.mjs",
+    "test:escpos": "node scripts/test-escpos.mjs",
+    "test": "npm run test:concurrency && npm run test:flow && npm run test:escpos && npm run test:offline && npm run test:queue",
+    "reset-demo": "node --env-file=.env.local scripts/reset-demo.mjs",
+    "test:offline": "node --env-file=.env.local scripts/test-offline.mjs",
+    "test:queue": "node --env-file=.env.local scripts/test-queue.mjs",
+    "test:ui": "node scripts/test-ui.mjs",
+    "test:db": "node scripts/test-db.mjs"
   },
   "dependencies": {
     "next": "16.3.1",
+    "postgres": "^3.4.9",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/w3c-web-usb": "^1.0.14",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

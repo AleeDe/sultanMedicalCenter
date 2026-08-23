@@ -1,26 +1,313 @@
 @import "tailwindcss";
 
+/*
+  Front-desk software for a bright room, used under time pressure.
+
+  Light-only by design: a receptionist reading a token number aloud should not
+  be fighting a dark theme, and thermal receipts are black-on-white regardless.
+
+  The palette carries meaning rather than decoration — the whole screen takes
+  on the colour of the visit type, so "am I issuing an emergency token?" is
+  answerable from across the room without reading a single word.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #eef2f6;
+  --surface: #ffffff;
+  --surface-sunken: #f1f5f9;
+  --ink: #0b1524;
+  --ink-2: #33415c;
+  --muted: #64748b;
+  --line: #dde3ea;
+  --line-strong: #b8c2ce;
+
+  /*
+    Hover must be *seen*, not merely present. An earlier pass moved white to
+    #f7f9fb — a 2% step that measured as a change and was invisible in the
+    room. These are deliberately strong enough to read at a glance on a bright
+    front-desk monitor.
+  */
+  --hover: #e2e9f2;
+  --hover-line: #7ea6cc;
+
+  /* Accent — recoloured per visit type by [data-mode] below. */
+  --accent: #0b5fa5;
+  --accent-ink: #ffffff;
+  --accent-soft: #e8f1fa;
+  --accent-line: #9cc3e6;
+
+  --ok: #05683f;
+  --ok-soft: #e6f6ee;
+  --danger: #b42318;
+  --danger-soft: #fdf0ef;
+  --gold: #96590b;
+  --gold-soft: #fdf5e7;
+
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 16px;
+
+  /*
+    Elevation is a three-step ladder, not a free parameter. Every raised
+    surface picks a rung, so "how high is this?" is answerable by looking
+    rather than by reading CSS. Shadows stay tinted with the ink colour —
+    a neutral grey shadow reads as dirt on a blue-grey background.
+  */
+  --shadow: 0 1px 2px rgb(11 21 36 / 0.06), 0 1px 3px rgb(11 21 36 / 0.04);
+  --shadow-md: 0 2px 4px -1px rgb(11 21 36 / 0.08), 0 4px 12px -2px rgb(11 21 36 / 0.08);
+  --shadow-lg: 0 10px 24px -8px rgb(11 21 36 / 0.16);
+
+  /*
+    Type scale. Three levels of hierarchy is the working limit for a screen
+    read under time pressure — beyond that, size stops encoding rank and
+    starts being decoration. Sizes are fixed rather than fluid: this runs on
+    one known front-desk monitor, and a clamp() that shifts the layout
+    between renders would break the receptionist's spatial memory.
+
+    Weight carries as much hierarchy as size does, which is why there is a
+    semibold and a bold step rather than one "strong".
+  */
+  --t-display: 2.5rem;   /* the issued token number, read aloud */
+  --t-title: 1.375rem;   /* screen title */
+  --t-head: 1rem;        /* card heading */
+  --t-body: 0.875rem;    /* the default */
+  --t-label: 0.8125rem;  /* field labels, table headers */
+  --t-micro: 0.6875rem;  /* metadata, timestamps, counts */
+
+  --w-normal: 400;
+  --w-medium: 500;
+  --w-semi: 600;
+  --w-bold: 700;
+
+  /*
+    One spacing rhythm, so unrelated components still line up. 4px base:
+    small enough for icon nudges, large enough that steps stay distinct.
+  */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+
+  /* Motion. Short enough to feel instant, long enough to be seen. */
+  --ease: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --dur-fast: 0.12s;
+  --dur: 0.2s;
+}
+
+/* Emergency repaints the accent everywhere it is used. */
+[data-mode="emergency"] {
+  --accent: #b42318;
+  --accent-soft: #fdf0ef;
+  --accent-line: #f0b4ae;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--surface-sunken);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-hover: var(--hover);
+  --color-hover-line: var(--hover-line);
+  --radius-card: var(--r);
+  --radius-lg: var(--r-lg);
+
+  --text-display: var(--t-display);
+  --text-title: var(--t-title);
+  --text-head: var(--t-head);
+  --text-body: var(--t-body);
+  --text-label: var(--t-label);
+  --text-micro: var(--t-micro);
+
+  --shadow-e1: var(--shadow);
+  --shadow-e2: var(--shadow-md);
+  --shadow-e3: var(--shadow-lg);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--line);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers that must be compared or read aloud get tabular figures so digits
+   never shift position between renders. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/*
+  Fitts's Law floor, enforced globally rather than per component: every
+  interactive target is at least 44px (WCAG 2.5.5 AAA), never the 24px AA
+  minimum. This is a speed-critical app.
+*/
+button,
+select,
+[role="button"] {
+  min-height: 44px;
+}
+
+/* Anything clickable says so. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+select,
+a[href],
+label:has(input[type="checkbox"]) {
+  cursor: pointer;
+}
+
+input,
+textarea {
+  min-height: 44px;
+  font-size: 16px; /* prevents mobile zoom-on-focus */
+}
+
+input,
+select,
+textarea {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 0 12px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+input::placeholder {
+  color: #9aa6b5;
+}
+
+input:hover:not(:disabled):not(:focus),
+select:hover:not(:disabled):not(:focus),
+textarea:hover:not(:disabled):not(:focus) {
+  border-color: var(--hover-line);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+:where(button, input, select, textarea, a, [tabindex]):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-pop {
+  animation: pop-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.animate-rise {
+  animation: slide-up 0.22s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop,
+  .animate-rise {
+    animation: none;
+  }
+}
+
+/*
+  The print slip lives in the DOM at all times (so it is ready the instant
+  window.print() fires) but must never be visible on screen. Kept off-canvas
+  rather than display:none, because a hidden subtree would not lay out and
+  some engines then print it blank.
+*/
+#print-root {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  visibility: hidden;
+}
+
+/*
+  Printing: hide the entire app and lift the slip to the paper origin.
+  Anything left in flow would consume the first inches of the roll.
+*/
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body > *:not(#print-root) {
+    display: none !important;
+  }
+  #print-root {
+    position: absolute;
+    top: 0;
+    left: 0;
+    margin: 0;
+    visibility: visible;
+  }
+  #print-root .slip {
+    margin: 0;
+  }
 }
