@@ -16,7 +16,8 @@
     "test:offline": "node --env-file=.env.local scripts/test-offline.mjs",
     "test:queue": "node --env-file=.env.local scripts/test-queue.mjs",
     "test:ui": "node scripts/test-ui.mjs",
-    "test:db": "node scripts/test-db.mjs"
+    "test:db": "node scripts/test-db.mjs",
+    "test:seeded": "node scripts/test-seeded.mjs"
   },
   "dependencies": {
     "next": "16.3.1",

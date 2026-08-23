@@ -46,8 +46,21 @@ try {
     const base = dow === 0 ? 4 : dow === 6 ? 10 : 16;
     const count = Math.max(1, Math.round(base + (Math.random() - 0.5) * 8));
 
-    // Per-day counters, so numbering matches what the app would have produced.
+    /*
+      Per-day counters, so numbering matches what the app would have produced.
+
+      Seeded from what that day ALREADY holds rather than from zero. Running
+      this twice — or running it on a database that has seen real tokens —
+      otherwise regenerates numbers that exist, and unique_id rejects them.
+    */
     const seqs = new Map();
+    for (const row of await sql`
+      select series_id, coalesce(max(seq), 0)::int as last
+        from token where token_date = ${iso}
+       group by series_id
+    `) {
+      seqs.set(Number(row.series_id), row.last);
+    }
 
     for (let i = 0; i < count; i++) {
       const emergency = chance(0.15);
@@ -76,8 +89,8 @@ try {
         created++;
       }
 
-      const seq = (seqs.get(s.id) ?? 0) + 1;
-      seqs.set(s.id, seq);
+      const seq = (seqs.get(Number(s.id)) ?? 0) + 1;
+      seqs.set(Number(s.id), seq);
 
       const hour = 9 + Math.floor(Math.random() * 11);
       const at = `${iso} ${String(hour).padStart(2, "0")}:${String(

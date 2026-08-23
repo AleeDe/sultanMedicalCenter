@@ -253,17 +253,29 @@ supabase db push                      # applies supabase/migrations/*.sql
 node --env-file=.env.production.local scripts/test-db.mjs
 ```
 
-`DATABASE_URL` must use the **session-mode pooler on port 5432**, not
-transaction mode on 6543:
+### Which pooler
 
-```
-postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
-```
+Supabase offers two, and the right one depends on where the app runs. New
+projects no longer publish a resolvable `db.<ref>.supabase.co` over IPv4, so
+one of these *is* the connection.
 
-Token allocation runs inside a transaction that holds a row lock across
-several statements, which transaction pooling breaks. New projects no longer
-publish a resolvable `db.<ref>.supabase.co` host over IPv4, so the session
-pooler is the direct connection for practical purposes.
+| | Port | Use for | Limit |
+|---|---|---|---|
+| **Session** | 5432 | A long-lived server, migrations, scripts | ~15 client connections **per project, in total** |
+| **Transaction** | 6543 | **Serverless (Vercel)** | Thousands of clients over a small backend pool |
+
+On Vercel, session mode is the wrong choice: every warm lambda holds its own
+pool, and a handful of instances exhausts the project's 15 connections. Use
+transaction mode.
+
+**Transaction pooling does not break gapless numbering.** A transaction is
+pinned to one backend for its whole duration, so the row lock that serialises
+token allocation still holds — verified against the live project: 50 parallel
+`issue_token` calls through port 6543 produced exactly 1..50, no duplicates.
+What it does break is *prepared statements*, because consecutive statements
+outside a transaction may land on different backends. `src/lib/db.ts` detects
+port 6543 and sets `prepare: false` automatically, so there is one thing to
+get right in the environment rather than three.
 
 ### Two things that differ from a plain Postgres
 
@@ -292,6 +304,51 @@ Postgres is correct without the migration.
 `scripts/test-db.mjs` asserts the live session is actually in the clinic
 timezone and that pgcrypto resolves, because "it connected" is not the same as
 "it connected correctly".
+
+## Deploying to Vercel
+
+Two environment variables. That is the whole list — the app reads nothing
+else at runtime.
+
+| Variable | Value | Environments |
+|---|---|---|
+| `DATABASE_URL` | `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres` | Production, Preview, Development |
+| `CLINIC_TIMEZONE` | `Asia/Karachi` | Production, Preview, Development |
+
+Note the port: **6543**, transaction mode — see [Which pooler](#which-pooler).
+
+Optional, and only if the defaults do not fit:
+
+| Variable | Default | When to set it |
+|---|---|---|
+| `DB_POOL_MAX` | 3 on port 6543, 5 on 5432 | Raise only alongside the Supabase connection limit, never on its own. |
+
+`ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` are **not** needed: they belong
+to the demo-video scripts in `demo/`, which never run on the server.
+
+### Before the first real token
+
+1. **Set the clinic name.** Admin → Clinic & receipt. This is database
+   content, not code, so deploying does not change it — and it is what prints
+   at the top of every slip.
+2. **Change the four doctor PINs and the admin PIN**, all of which ship as
+   `1234`. `npm run test:db` warns while any remain.
+3. **Clear the demo history** so it cannot mix with real records — doctors,
+   services, prices and settings are kept:
+   ```bash
+   node --env-file=.env.production.local scripts/reset-demo.mjs --yes
+   ```
+
+### What will not work on Vercel
+
+**Printing.** Both paths are browser-side and need the machine the printer is
+plugged into: WebUSB requires a one-time permission grant per browser, and the
+`--kiosk-printing` flag that suppresses the print dialog is a property of how
+Chrome was launched. Deploying to Vercel serves the app; the front-desk
+machine still has to be set up once from Admin → Printer.
+
+**Offline token issue** works — the service worker and IndexedDB outbox are
+client-side — but the lease has to be taken while the connection is up.
 
 ## Not built yet
 
