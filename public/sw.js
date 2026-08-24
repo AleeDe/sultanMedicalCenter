@@ -18,14 +18,14 @@
 */
 
 /*
-  Bumped again (v3) so browsers pick up the RSC fix below. v2 evicted
-  caches poisoned by an earlier bug: error
+  Bumped to v4 so browsers pick up the voice-clip caching below. v3 carried
+  the RSC fix; v2 evicted caches poisoned by an earlier bug, where error
   responses were stored as the offline shell, so browsers that loaded the
   site during a database outage kept serving that error back. Changing the
   version makes the activate handler drop the old caches outright, which is
   the only way to clear a bad entry from a browser we cannot reach.
 */
-const VERSION = "v3";
+const VERSION = "v4";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
@@ -78,6 +78,36 @@ self.addEventListener("fetch", (event) => {
           fetch(request).then((res) => {
             const copy = res.clone();
             caches.open(ASSETS).then((c) => c.put(request, copy));
+            return res;
+          }),
+      ),
+    );
+    return;
+  }
+
+  /*
+    The announcement voice.
+
+    Cache-first, like the build output above and for the same reason: these
+    clips are rendered at build time and never change, so a hit is always
+    correct. Caching them matters more than it does for most assets — the
+    board is a wall-mounted screen on clinic wifi, and an announcement that
+    fails because a fetch timed out is a patient who never hears their turn.
+
+    Cached on first play rather than pre-cached: a clinic only ever uses the
+    low token numbers of a given day, so pre-caching all several hundred
+    would spend bandwidth on clips that will not be needed.
+  */
+  if (url.pathname.startsWith("/voice/")) {
+    event.respondWith(
+      caches.match(request).then(
+        (hit) =>
+          hit ??
+          fetch(request).then((res) => {
+            if (res.ok) {
+              const copy = res.clone();
+              caches.open(ASSETS).then((c) => c.put(request, copy));
+            }
             return res;
           }),
       ),
