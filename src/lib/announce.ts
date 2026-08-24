@@ -101,9 +101,29 @@ function pickVoice(lang: string): SpeechSynthesisVoice | null {
   const primary = tag.split("-")[0];
 
   return (
+    // Exact match first: ur-PK before ur-IN.
     voices.find((v) => v.lang.toLowerCase() === tag) ??
     voices.find((v) => v.lang.toLowerCase().startsWith(primary + "-")) ??
     voices.find((v) => v.lang.toLowerCase() === primary) ??
+    /*
+      Then Hindi, which is the useful fallback rather than an arbitrary one.
+      Windows ships no Urdu voice at all, but Hindi shares most of the
+      phoneme inventory, so a Pakistani name comes out far closer than an
+      English voice manages.
+    */
+    voices.find((v) => v.lang.toLowerCase().startsWith("hi")) ??
+    /*
+      Finally any voice at all.
+
+      This used to return null here, and the board then said nothing. That
+      was the wrong trade for a waiting room: the announcement exists to make
+      someone who has stopped watching the screen look up, and an imperfectly
+      pronounced call still does that — silence does not. The token number is
+      digits, which every voice reads correctly, and the screen carries the
+      name in full for anyone who needs to check it.
+    */
+    voices.find((v) => v.default) ??
+    voices[0] ??
     null
   );
 }
@@ -164,9 +184,25 @@ export function spokenToken(displayNo: string): string {
  */
 export function announcementText(
   displayNo: string,
+  doctorName: string | null,
   room: string | null,
 ): string {
+  /*
+    Ordered the way it is actually used, not the way the data is shaped.
+
+    The token number leads because that is what a patient holds in their hand
+    and matches; it is also digits, which every voice reads correctly. Where
+    to go comes next, because that is the instruction. The doctor's name is
+    last and optional — useful confirmation, but nobody stands up because of
+    it.
+
+    The patient's NAME is deliberately absent. A waiting room is a public
+    space and the name is the identifying part, while the token number picks
+    out exactly one person without announcing who they are to everyone. The
+    screen shows the name in full for anyone who needs to check.
+  */
   const parts = [`Token ${spokenToken(displayNo)}`];
   if (room) parts.push(`please proceed to ${room}`);
+  if (doctorName) parts.push(doctorName.replace(/^Dr\.?\s*/i, "Doctor "));
   return parts.join(", ") + ".";
 }

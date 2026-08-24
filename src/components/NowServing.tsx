@@ -82,7 +82,7 @@ export function AnnouncementOverlay({
       const t = setTimeout(
         () =>
           speak(
-            announcementText(called.displayNo, called.room),
+            announcementText(called.displayNo, called.doctorName, called.room),
             speechLang,
           ),
         1100,
