@@ -141,7 +141,11 @@ export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
                 ? "Printer connected — slips print directly"
                 : "No USB printer — the browser print dialog will open. Click to set up."
             }
-            className={`hidden items-center gap-1.5 rounded-full px-3 py-1.5
+            // A real target, not a decorative chip: it is a link to printer
+            // setup, and on a tablet a 28px-tall control is a miss waiting to
+            // happen.
+            style={{ minHeight: 44 }}
+            className={`hidden items-center gap-1.5 rounded-full px-3
               text-xs font-semibold transition-colors sm:inline-flex ${
                 usbReady
                   ? "bg-[var(--ok-soft)] text-[var(--ok)]"
@@ -166,7 +170,7 @@ export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
             title="Settings"
             aria-label="Settings"
             aria-current={isActive(path, "/admin") ? "page" : undefined}
-            className={`hidden h-10 w-10 items-center justify-center rounded-[10px]
+            className={`hidden h-11 w-11 items-center justify-center rounded-[10px]
               transition-colors md:inline-flex ${
                 isActive(path, "/admin")
                   ? "bg-[var(--accent-soft)] text-[var(--accent)]"

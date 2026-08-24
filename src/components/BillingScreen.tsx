@@ -410,7 +410,7 @@ function AddItemPanel({
                         ? "bg-[var(--accent)] text-[var(--accent-ink)]"
                         : "bg-sunken text-muted hover:text-[var(--ink-2)]"
                     }`}
-                  style={{ minHeight: 36 }}
+                  style={{ minHeight: 44 }}
                 >
                   {titleCase(c)}
                 </button>
@@ -537,7 +537,7 @@ function ItemList({
               variant="ok"
               onClick={() => onPay(it.id)}
               className="h-9 shrink-0 px-3 text-xs"
-              style={{ minHeight: 36 }}
+              style={{ minHeight: 44 }}
             >
               Take payment
             </Button>
@@ -552,10 +552,10 @@ function ItemList({
                   onRemove(it.id);
               }}
               aria-label={`Remove ${it.name_snapshot}`}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--r-sm)]
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--r-sm)]
                 text-muted transition-colors hover:bg-[var(--danger-soft)]
                 hover:text-[var(--danger)]"
-              style={{ minHeight: 36 }}
+              style={{ minHeight: 44 }}
             >
               <IconCross className="h-4 w-4" />
             </button>

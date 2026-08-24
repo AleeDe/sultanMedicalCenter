@@ -352,8 +352,15 @@ export function NewTokenForm({
                       )}
                     </span>
                     <span className="min-w-0">
+                      {/*
+                        Wraps rather than truncates: this is the visit type,
+                        and it sets the fee. "Normal ..." on a phone hides the
+                        one word that distinguishes it from Emergency, which
+                        is a three-times price difference — not something to
+                        clip for the sake of a single line.
+                      */}
                       <span
-                        className={`block truncate text-[15px] font-bold ${
+                        className={`block text-[15px] font-bold leading-tight ${
                           on ? (isEm ? "text-[var(--danger)]" : "text-[var(--accent)]") : ""
                         }`}
                       >
@@ -559,7 +566,16 @@ export function NewTokenForm({
                 />
               </Field>
 
-              <div className="grid grid-cols-[minmax(0,260px)_110px] gap-3">
+              {/*
+                Gender and age share a row only when there is room for both.
+
+                A fixed two-column track squeezed three gender buttons into
+                ~59px each on a phone, which is below the size a thumb hits
+                reliably and forced "Female" to wrap. Age is a three-character
+                field, so it drops below rather than stealing width from the
+                choice that is pressed far more often.
+              */}
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,260px)_110px]">
                 <Field label="Gender" required>
                   <Segmented
                     label="Gender"

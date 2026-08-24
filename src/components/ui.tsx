@@ -162,14 +162,21 @@ export function Segmented<T extends string | number>({
             type="button"
             aria-pressed={on}
             onClick={() => onChange(o.value)}
+            /*
+              44px at `lg`, which is where this is used for real choices like
+              gender on the token form — a field reception fills for every
+              patient, often on a touchscreen, while talking to the person in
+              front of them. Fitts' Law: the cost of a target is a function of
+              its size, and this one is pressed hundreds of times a day.
+            */
             className={`rounded-[6px] font-semibold transition-all duration-100
-              ${size === "lg" ? "h-10 text-[15px]" : "h-9 text-sm"}
+              ${size === "lg" ? "h-11 text-[15px]" : "h-10 text-sm"}
               ${
                 on
                   ? "bg-[var(--accent)] text-[var(--accent-ink)] shadow-[var(--shadow)]"
                   : "text-[var(--ink-2)] hover:bg-[var(--surface)] hover:text-[var(--accent)] hover:shadow-[var(--shadow)] active:scale-[0.97]"
               }`}
-            style={{ minHeight: size === "lg" ? 40 : 36 }}
+            style={{ minHeight: size === "lg" ? 44 : 40 }}
           >
             {o.label}
           </button>

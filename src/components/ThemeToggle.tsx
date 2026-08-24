@@ -63,10 +63,14 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       onClick={() => applyTheme(next)}
       aria-label={`Switch to ${next} theme`}
       title={`Switch to ${next} theme`}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-full
+      // 44px, the smallest target a finger hits reliably (Fitts' Law, and
+      // the WCAG 2.5.5 minimum). This sits in a header next to other
+      // controls, so an undersized one is not just hard to hit — it is easy
+      // to hit the wrong thing.
+      className={`inline-flex h-11 w-11 items-center justify-center rounded-full
         text-muted transition-colors hover:bg-[var(--hover)] hover:text-[var(--accent)]
         ${className}`}
-      style={{ minHeight: 36 }}
+      style={{ minHeight: 44, minWidth: 44 }}
     >
       {/* Invisible until known, so nothing flips after hydration. */}
       <span className={theme === null ? "opacity-0" : "opacity-100"}>

@@ -257,7 +257,7 @@ function DoctorPanel({
               {q.current.display_no}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold">{q.current.patient_name}</p>
+              <p className="break-words font-semibold">{q.current.patient_name}</p>
               <p className="text-sm text-muted">
                 In consultation
                 {q.current.started_at && (
@@ -291,7 +291,7 @@ function DoctorPanel({
               >
                 <div className="flex items-center gap-2.5">
                   <TokenChip row={r} />
-                  <span className="min-w-0 flex-1 truncate font-medium">
+                  <span className="min-w-0 flex-1 break-words font-medium">
                     {r.patient_name}
                   </span>
                 </div>
@@ -415,7 +415,15 @@ function DoctorPanel({
                   {r.queue_pos}
                 </span>
                 <TokenChip row={r} />
-                <span className="min-w-0 flex-1 truncate">
+                {/*
+                  Wraps rather than truncates. This is the name reception
+                  reads out and the doctor matches against the person walking
+                  in, and "Muhammad Abdul…" is a genuine ambiguity in a clinic
+                  where several patients share a first name — not a cosmetic
+                  one. A second line costs a few pixels; calling the wrong
+                  patient costs a consultation.
+                */}
+                <span className="min-w-0 flex-1 break-words">
                   {r.patient_name}
                 </span>
                 <Badge tone={r.eta_minutes > 30 ? "gold" : "neutral"}>
@@ -438,7 +446,7 @@ function DoctorPanel({
                 className="flex flex-wrap items-center gap-2.5 rounded-[var(--r-sm)] bg-sunken p-2.5"
               >
                 <TokenChip row={r} />
-                <span className="min-w-0 flex-1 truncate text-sm">
+                <span className="min-w-0 flex-1 break-words text-sm">
                   {r.patient_name}
                 </span>
                 <span className="text-xs text-muted">

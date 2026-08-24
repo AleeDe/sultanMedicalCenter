@@ -52,7 +52,7 @@ export function AnalyticsScreen({ initial }: { initial: Data }) {
                   ? "bg-[var(--accent)] text-[var(--accent-ink)] shadow-[var(--shadow)]"
                   : "bg-sunken text-[var(--ink-2)] hover:bg-[var(--surface)] hover:text-[var(--accent)] hover:shadow-[var(--shadow)]"
               }`}
-              style={{ minHeight: 36 }}
+              style={{ minHeight: 44 }}
             >
               {r.label}
             </button>

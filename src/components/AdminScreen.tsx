@@ -260,7 +260,7 @@ function DoctorsTab({
                 className="flex items-center gap-3 border-b border-[var(--line)] px-4 py-2.5 last:border-0"
               >
                 <span
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full
                     bg-sunken text-[13px] font-bold text-muted"
                   aria-hidden
                 >
@@ -288,7 +288,7 @@ function DoctorsTab({
                 <Button
                   onClick={() => setEditing(d)}
                   className="h-9 shrink-0 px-4 text-xs"
-                  style={{ minHeight: 36 }}
+                  style={{ minHeight: 44 }}
                 >
                   Edit
                 </Button>
@@ -403,7 +403,7 @@ function SeriesCard({
     <Card className="p-4">
       <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
         <span
-          className={`flex h-9 w-9 items-center justify-center rounded-[10px] ${
+          className={`flex h-11 w-11 items-center justify-center rounded-[10px] ${
             em
               ? "bg-[var(--danger-soft)] text-[var(--danger)]"
               : "bg-[var(--accent-soft)] text-[var(--accent)]"
@@ -553,7 +553,7 @@ function CatalogueTab({
                     <Button
                       onClick={() => setEditing(s)}
                       className="h-9 shrink-0 px-4 text-xs"
-                      style={{ minHeight: 36 }}
+                      style={{ minHeight: 44 }}
                     >
                       Edit
                     </Button>
