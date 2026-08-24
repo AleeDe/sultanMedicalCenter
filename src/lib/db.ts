@@ -53,7 +53,29 @@ const timezone = process.env.CLINIC_TIMEZONE ?? "Asia/Karachi";
   Detected from the port rather than configured separately, so there is one
   thing to get right in the environment instead of three.
 */
-const isTransactionPooler = /:6543/.test(connectionString);
+/*
+  The port, read by parsing the URL rather than pattern-matching the string.
+
+  Two regexes over the raw string used to answer this — one for "is it 6543",
+  another to name the port in the error — and they could disagree, producing
+  the self-contradicting "points at port 6543, but requires port 6543".
+  Worse, a substring match also finds 6543 inside the PASSWORD, so a session
+  connection whose password happened to contain those digits was silently
+  treated as the transaction pooler.
+
+  One parse, one answer. The trim/unquote guards against a value pasted into
+  a dashboard with stray whitespace or quotation marks around it.
+*/
+const dbPort = (() => {
+  try {
+    return new URL(connectionString.trim().replace(/^["']|["']$/g, "")).port;
+  } catch {
+    // An unparseable URL is postgres's problem to report, not this check's.
+    return "";
+  }
+})();
+
+const isTransactionPooler = dbPort === "6543";
 
 /*
   A serverless host on the session pooler will fail under any real traffic:
@@ -76,15 +98,15 @@ const isTransactionPooler = /:6543/.test(connectionString);
     5432 as fact, which sent people back to re-read a variable that was
     sometimes already correct. It reports the port actually found.
 */
-const port = /:(\d{4,5})\//.exec(connectionString)?.[1] ?? "unknown";
 
 /* Set by `next build` while collecting route config; unset at runtime. */
 const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
 
 if (process.env.VERCEL && !isTransactionPooler) {
   const message =
-    `DATABASE_URL points at port ${port}, but serverless requires Supabase's ` +
-    "transaction pooler on port 6543. Update DATABASE_URL in the Vercel " +
+    `DATABASE_URL points at port ${dbPort || "(none)"}, but serverless ` +
+    "requires Supabase's transaction pooler on port 6543. " +
+    "Update DATABASE_URL in the Vercel " +
     "project's environment variables (Settings -> Environment Variables), " +
     "tick the Production environment, then redeploy WITHOUT the build cache " +
     "-- a cached build keeps the old value. See README, 'Which pooler'.";
