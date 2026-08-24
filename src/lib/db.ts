@@ -131,6 +131,23 @@ export const sql = postgres(connectionString, {
     warm, so reconnecting is cheap.
   */
   idle_timeout: isTransactionPooler ? 5 : 20,
+
+  /*
+    Fail fast rather than hang.
+
+    Without this, a database that accepts TCP but never completes the
+    handshake — a rotated password, an exhausted connection cap, a paused
+    project — leaves every request waiting indefinitely. The platform logs a
+    200 for the streamed shell while the browser spins forever, which is the
+    single hardest failure to diagnose: nothing anywhere says what is wrong.
+
+    Ten seconds is far longer than a healthy connect (tens of milliseconds,
+    even cross-region) and well inside a serverless function's own limit, so
+    the error surfaces in the runtime log with a real cause attached instead
+    of the request being killed anonymously by the platform.
+  */
+  connect_timeout: Number(process.env.DB_CONNECT_TIMEOUT ?? 10),
+
   // Required by transaction pooling; harmless but pointless otherwise.
   prepare: !isTransactionPooler,
   connection: {
