@@ -23,9 +23,15 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// The Node runtime is not needed to answer "am I up", and the edge runtime
-// answers it without waking a function that imports the database module.
-export const runtime = "edge";
+/*
+  Deliberately the default (Node) runtime.
+
+  The edge runtime looked attractive — it answers without waking a function
+  that imports the database module — but it is deprecated in this version of
+  Next, and a deprecated runtime is a bad foundation for the one endpoint
+  whose entire job is to be answerable when other things are broken. This
+  route imports nothing from the app, so it stays cheap regardless.
+*/
 
 export function GET() {
   return NextResponse.json(

@@ -17,7 +17,14 @@
                      would duplicate work the outbox already owns.
 */
 
-const VERSION = "v1";
+/*
+  Bumped to v2 to evict caches poisoned by the bug fixed below: error
+  responses were stored as the offline shell, so browsers that loaded the
+  site during a database outage kept serving that error back. Changing the
+  version makes the activate handler drop the old caches outright, which is
+  the only way to clear a bad entry from a browser we cannot reach.
+*/
+const VERSION = "v2";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
@@ -81,9 +88,20 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          // Keep the shell current so an outage serves the latest build.
-          const copy = res.clone();
-          caches.open(SHELL).then((c) => c.put(request, copy));
+          /*
+            Only a GOOD page is worth keeping.
+
+            This used to cache every navigation response, errors included. A
+            single 500 — a database outage, a bad deploy — was then stored as
+            the offline shell and served back from cache afterwards, so the
+            site stayed broken in that browser long after the server had
+            recovered, and a hard reload was the only way out. An error page
+            is never a useful thing to show someone offline.
+          */
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(SHELL).then((c) => c.put(request, copy));
+          }
           return res;
         })
         .catch(async () => {
