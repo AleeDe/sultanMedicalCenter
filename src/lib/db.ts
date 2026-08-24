@@ -62,15 +62,40 @@ const isTransactionPooler = /:6543/.test(connectionString);
   up. It looks fine in one-off testing and breaks the moment two people use
   it at once.
 
-  This shipped to production once already, so it now fails loudly at startup
-  instead of intermittently under load.
+  This shipped to production once already, so it still refuses to serve
+  traffic on the wrong pooler. Two things it deliberately does NOT do:
+
+  * It does not fail the BUILD. `next build` imports every route to read its
+    config, which evaluates this module — so throwing here killed the build
+    over a value that only matters once a request is served. A deployment
+    that cannot build also cannot be repaired by fixing an environment
+    variable and redeploying, which is exactly the fix this error asks for.
+    It now warns during the build and throws on first use instead.
+
+  * It does not assert a port it never checked. The original message named
+    5432 as fact, which sent people back to re-read a variable that was
+    sometimes already correct. It reports the port actually found.
 */
+const port = /:(\d{4,5})\//.exec(connectionString)?.[1] ?? "unknown";
+
+/* Set by `next build` while collecting route config; unset at runtime. */
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+
 if (process.env.VERCEL && !isTransactionPooler) {
-  throw new Error(
-    "DATABASE_URL uses the session pooler (port 5432), which cannot support " +
-      "serverless. Change the port to 6543 in the Vercel environment " +
-      "variables and redeploy. See README, 'Which pooler'.",
-  );
+  const message =
+    `DATABASE_URL points at port ${port}, but serverless requires Supabase's ` +
+    "transaction pooler on port 6543. Update DATABASE_URL in the Vercel " +
+    "project's environment variables (Settings -> Environment Variables), " +
+    "tick the Production environment, then redeploy WITHOUT the build cache " +
+    "-- a cached build keeps the old value. See README, 'Which pooler'.";
+
+  if (isBuildPhase) {
+    // Visible in the build log, but the deployment still completes so the
+    // fix can be applied by changing the variable and redeploying.
+    console.warn(`[db] WARNING: ${message}`);
+  } else {
+    throw new Error(message);
+  }
 }
 
 export const sql = postgres(connectionString, {
