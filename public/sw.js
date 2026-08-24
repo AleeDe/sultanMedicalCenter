@@ -18,14 +18,21 @@
 */
 
 /*
-  Bumped to v4 so browsers pick up the voice-clip caching below. v3 carried
-  the RSC fix; v2 evicted caches poisoned by an earlier bug, where error
-  responses were stored as the offline shell, so browsers that loaded the
-  site during a database outage kept serving that error back. Changing the
-  version makes the activate handler drop the old caches outright, which is
-  the only way to clear a bad entry from a browser we cannot reach.
+  Bumped to v5: the announcement clips were replaced wholesale (one clip per
+  whole token number became one per digit), so every board still holding the
+  v4 asset cache is holding several hundred files that no longer exist. v4
+  added voice caching; v3 carried the RSC fix; v2 evicted caches poisoned by
+  an earlier bug, where error responses were stored as the offline shell, so
+  browsers that loaded the site during a database outage kept serving that
+  error back. Changing the version makes the activate handler drop the old
+  caches outright, which is the only way to clear a bad entry from a browser
+  we cannot reach.
+
+  This must be bumped whenever the contents of public/voice change. A board
+  runs unattended for weeks; without a bump it can keep serving a cache whose
+  clips the current code no longer asks for.
 */
-const VERSION = "v4";
+const VERSION = "v5";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
@@ -94,9 +101,9 @@ self.addEventListener("fetch", (event) => {
     board is a wall-mounted screen on clinic wifi, and an announcement that
     fails because a fetch timed out is a patient who never hears their turn.
 
-    Cached on first play rather than pre-cached: a clinic only ever uses the
-    low token numbers of a given day, so pre-caching all several hundred
-    would spend bandwidth on clips that will not be needed.
+    Cached on first play rather than pre-cached. The whole vocabulary is only
+    ~20 files now, so this fills up within the first few announcements of a
+    day and costs nothing on a board that is already loading the page.
   */
   if (url.pathname.startsWith("/voice/")) {
     event.respondWith(

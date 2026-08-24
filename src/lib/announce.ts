@@ -189,6 +189,26 @@ export async function loadVoice(): Promise<boolean> {
 }
 
 /**
+ * Re-checks the rendered voice after it was found missing.
+ *
+ * The probe runs once, on the gesture that unlocks audio, and a board is
+ * then left alone for weeks. Without this, a single failure at that moment —
+ * a slow first load, or a deploy landing mid-session so the clips being
+ * asked for briefly do not exist — would pin the board to the browser's
+ * synthetic voice for the rest of the day even after everything recovered.
+ *
+ * Cheap to retry: the clips are ~20 small files, and once one decodes the
+ * rest come from cache.
+ */
+export async function retryVoice(): Promise<boolean> {
+  if (phraseVoice) return true;
+  // Drop any negative result so the fetch is actually attempted again.
+  clips.delete("tok");
+  clips.delete("r1");
+  return loadVoice();
+}
+
+/**
  * The clips to play for a call, in order.
  *
  * Mirrors the announcement's priorities: the token number leads because it

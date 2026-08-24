@@ -6,6 +6,7 @@ import {
   chime,
   loadVoice,
   phraseVoiceReady,
+  retryVoice,
   speak,
   speakAnnouncement,
   unlockAudio,
@@ -141,12 +142,23 @@ export function AnnouncementOverlay({
         /*
           The rendered voice first, browser speech only as a fallback.
 
-          speakAnnouncement() declines when the token number is past the
-          range the build rendered, which is a real possibility on an
-          unusually busy day. A synthetic voice is much worse, and still far
-          better than a patient never hearing their turn called.
+          speakAnnouncement() declines when a clip is missing or will not
+          decode. The browser's own voice is markedly worse — it is the
+          synthetic one this whole path exists to avoid — but it still beats
+          a patient never hearing their turn called.
         */
         let spokenFor = 0;
+        /*
+          Retry the rendered voice before settling for the browser's.
+
+          The probe runs once, on the gesture that unlocks audio, and a board
+          then runs unattended for weeks. A single failure at that moment — a
+          slow first load, or a deploy landing mid-session — would otherwise
+          pin the screen to the synthetic voice for the rest of the day, long
+          after the clips were fine again.
+        */
+        if (!phraseVoiceReady()) await retryVoice();
+
         if (phraseVoiceReady()) {
           spokenFor = await speakAnnouncement(next.displayNo, next.room);
         }
