@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import { useToast } from "@/components/Toast";
 import {
   announceAgain,
   callNext,
@@ -55,6 +56,7 @@ export function QueueBoard({
   const [queues, setQueues] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const toast = useToast();
 
   const refresh = useCallback(async () => {
     try {
@@ -72,11 +74,32 @@ export function QueueBoard({
     return () => clearInterval(t);
   }, [refresh]);
 
-  const run = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
+  /*
+    Every action reports what it did, not just what it failed to do.
+
+    These used to succeed in silence, so the only evidence a press had
+    registered was a row quietly moving elsewhere on screen. On a busy desk
+    that reads the same as a press that missed — and the natural response is
+    to press again, which calls a second patient nobody is ready for.
+
+    The message names the token because that is the part that can be checked
+    against the screen and the slip in the patient's hand. "Done" would close
+    the loop without confirming the right thing happened.
+  */
+  const run = (
+    fn: () => Promise<{ ok: boolean; error?: string }>,
+    done?: string,
+  ) =>
     start(async () => {
       setError(null);
       const res = await fn();
-      if (!res.ok) setError(res.error ?? "Something went wrong.");
+      if (!res.ok) {
+        const msg = res.error ?? "Something went wrong.";
+        setError(msg);
+        toast.show(msg, "error");
+      } else if (done) {
+        toast.show(done);
+      }
       await refresh();
     });
 
@@ -112,12 +135,34 @@ export function QueueBoard({
           q={q}
           compact={compact}
           pending={pending}
-          onCall={() => run(() => callNext(q.doctorId))}
-          onStart={(id) => run(() => startConsultation(id))}
-          onAnnounce={(id) => run(() => announceAgain(id))}
-          onFinish={(id) => run(() => finishConsultation(id))}
-          onSkip={(id) => run(() => skipToken(id))}
-          onRecall={(id) => run(() => recallToken(id))}
+          /*
+            callNext is the one action whose confirmation cannot be written
+            in advance: which patient it reaches depends on the queue at the
+            moment it runs, so the message is built from what came back.
+            An empty queue is a success that did nothing, and saying so is
+            more useful than a silent no-op.
+          */
+          onCall={() =>
+            start(async () => {
+              setError(null);
+              const res = await callNext(q.doctorId);
+              if (!res.ok) {
+                const msg = res.error ?? "Something went wrong.";
+                setError(msg);
+                toast.show(msg, "error");
+              } else if (res.data) {
+                toast.show(`Called ${res.data.display_no} · ${res.data.patient_name}`);
+              } else {
+                toast.show("Nobody left in the queue");
+              }
+              await refresh();
+            })
+          }
+          onStart={(id, no) => run(() => startConsultation(id), `Started ${no}`)}
+          onAnnounce={(id, no) => run(() => announceAgain(id), `Calling ${no} again`)}
+          onFinish={(id, no) => run(() => finishConsultation(id), `Finished ${no}`)}
+          onSkip={(id, no) => run(() => skipToken(id), `${no} marked not here`)}
+          onRecall={(id, no) => run(() => recallToken(id), `${no} back in queue`)}
           onState={(state, minutes) =>
             run(() => setDoctorState({ doctorId: q.doctorId, state, minutes }))
           }
@@ -144,11 +189,11 @@ function DoctorPanel({
   compact?: boolean;
   pending: boolean;
   onCall: () => void;
-  onStart: (id: number) => void;
-  onAnnounce: (id: number) => void;
-  onFinish: (id: number) => void;
-  onSkip: (id: number) => void;
-  onRecall: (id: number) => void;
+  onStart: (id: number, displayNo: string) => void;
+  onAnnounce: (id: number, displayNo: string) => void;
+  onFinish: (id: number, displayNo: string) => void;
+  onSkip: (id: number, displayNo: string) => void;
+  onRecall: (id: number, displayNo: string) => void;
   onState: (s: "AVAILABLE" | "ON_BREAK" | "FINISHED", m: number | null) => void;
 }) {
   const onBreak = q.state === "ON_BREAK";
@@ -158,23 +203,32 @@ function DoctorPanel({
     <Card className="overflow-hidden">
       {/* Who, where, and how they are doing today */}
       <div className="border-b border-[var(--line)] p-4">
-        <div className="flex items-center gap-3">
-          <DoctorAvatar name={q.doctorName} />
-          <div className="min-w-0 flex-1">
-            {/*
-              The name identifies the whole panel, so it wraps rather than
-              truncating — "Dr. Ahme…" on a queue screen with four doctors is
-              a genuine ambiguity, not a cosmetic one.
-            */}
-            <p className="text-head font-bold leading-tight">{q.doctorName}</p>
-            <p className="truncate text-label text-muted">
-              {q.speciality}
-              {q.room ? ` · ${q.room}` : ""}
-            </p>
+        {/*
+          Reception is looking at four of these side by side, so each panel
+          has to name its own doctor. The doctor's own screen already carries
+          that name in its header — repeating it here would spend the top of
+          a tablet screen restating what the person holding it knows, and
+          push the queue itself further down.
+        */}
+        {!compact && (
+          <div className="mb-3 flex items-center gap-3">
+            <DoctorAvatar name={q.doctorName} />
+            <div className="min-w-0 flex-1">
+              {/*
+                The name identifies the whole panel, so it wraps rather than
+                truncating — "Dr. Ahme…" on a queue screen with four doctors is
+                a genuine ambiguity, not a cosmetic one.
+              */}
+              <p className="text-head font-bold leading-tight">{q.doctorName}</p>
+              <p className="truncate text-label text-muted">
+                {q.speciality}
+                {q.room ? ` · ${q.room}` : ""}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge tone="neutral">{q.seenToday} seen</Badge>
           <Badge tone="neutral">~{q.typicalMinutes} min each</Badge>
           {onBreak ? (
@@ -214,7 +268,7 @@ function DoctorPanel({
             <Button
               variant="secondary"
               disabled={pending}
-              onClick={() => onFinish(q.current!.token_id)}
+              onClick={() => onFinish(q.current!.token_id, q.current!.display_no)}
             >
               <IconCheck className="h-[18px] w-[18px]" />
               Done
@@ -248,7 +302,7 @@ function DoctorPanel({
                     variant="primary"
                     className="flex-1"
                     disabled={pending}
-                    onClick={() => onStart(r.token_id)}
+                    onClick={() => onStart(r.token_id, r.display_no)}
                   >
                     Start
                   </Button>
@@ -262,7 +316,7 @@ function DoctorPanel({
                   <Button
                     className="flex-1"
                     disabled={pending}
-                    onClick={() => onAnnounce(r.token_id)}
+                    onClick={() => onAnnounce(r.token_id, r.display_no)}
                     title="Announce this number on the waiting-room screen again"
                   >
                     Call again
@@ -271,7 +325,7 @@ function DoctorPanel({
                     variant="danger"
                     className="flex-1"
                     disabled={pending}
-                    onClick={() => onSkip(r.token_id)}
+                    onClick={() => onSkip(r.token_id, r.display_no)}
                     title="Patient did not appear — they can be recalled"
                   >
                     Not here
@@ -281,13 +335,13 @@ function DoctorPanel({
                   <Button
                     variant="primary"
                     disabled={pending}
-                    onClick={() => onStart(r.token_id)}
+                    onClick={() => onStart(r.token_id, r.display_no)}
                   >
                     Start
                   </Button>
                   <Button
                     disabled={pending}
-                    onClick={() => onAnnounce(r.token_id)}
+                    onClick={() => onAnnounce(r.token_id, r.display_no)}
                     title="Announce this number on the waiting-room screen again"
                   >
                     Call again
@@ -295,7 +349,7 @@ function DoctorPanel({
                   <Button
                     variant="danger"
                     disabled={pending}
-                    onClick={() => onSkip(r.token_id)}
+                    onClick={() => onSkip(r.token_id, r.display_no)}
                     title="Patient did not appear — they can be recalled"
                   >
                     Not here
@@ -392,7 +446,7 @@ function DoctorPanel({
                 </span>
                 <Button
                   disabled={pending}
-                  onClick={() => onRecall(r.token_id)}
+                  onClick={() => onRecall(r.token_id, r.display_no)}
                   className="h-9 px-3 text-xs"
                   style={{ minHeight: 36 }}
                 >

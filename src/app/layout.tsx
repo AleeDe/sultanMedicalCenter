@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Nav } from "@/components/Nav";
 import { RegisterSW } from "@/components/RegisterSW";
 import { ThemeScript } from "@/components/ThemeToggle";
+import { ConnectionToasts, ToastProvider } from "@/components/Toast";
 import { getSeries } from "@/app/actions/tokens";
 import "./globals.css";
 
@@ -32,6 +33,8 @@ export default async function RootLayout({
       </head>
       <body className="flex min-h-full flex-col">
         <RegisterSW />
+        <ToastProvider>
+        <ConnectionToasts />
         {/*
           The nav renders immediately; its series list streams in behind a
           Suspense boundary.
@@ -47,6 +50,7 @@ export default async function RootLayout({
           <NavWithSeries />
         </Suspense>
         <main className="flex-1">{children}</main>
+        </ToastProvider>
       </body>
     </html>
   );

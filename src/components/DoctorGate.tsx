@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { checkDoctorPin } from "@/app/actions/queue";
 import { Alert, Button, Card, DoctorAvatar } from "@/components/ui";
 import { IconLock, IconStethoscope } from "@/components/icons";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import type { Doctor } from "@/lib/types";
 
 const IDLE_MS = 30 * 60 * 1000;
@@ -93,15 +94,45 @@ export function DoctorGate({
   if (signedIn) {
     return (
       <>
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-2 px-4 pt-4 sm:px-5">
-          <p className="flex items-center gap-2 text-sm text-muted">
-            <span className="h-2 w-2 rounded-full bg-[var(--ok)]" aria-hidden />
-            Signed in as <strong className="text-[var(--ink)]">{signedIn.name}</strong>
-          </p>
-          <Button onClick={signOut} className="h-9 px-3 text-xs" style={{ minHeight: 36 }}>
-            Sign out
-          </Button>
-        </div>
+        {/*
+          The doctor's own header, in place of the shared reception nav.
+
+          This screen runs on a tablet in a consulting room, so it needs to
+          answer "whose screen is this, and which room" at a glance — a
+          doctor who walks up to the wrong tablet must see it immediately,
+          because acting on it calls the wrong room's patient. The reception
+          bar answered none of that and spent the width on destinations this
+          machine never opens.
+        */}
+        <header
+          className="no-print sticky top-0 z-20 border-b border-[var(--line)]
+            bg-[var(--surface)]/90 backdrop-blur-md"
+        >
+          <div className="mx-auto flex max-w-4xl items-center gap-3 px-4 py-2.5 sm:px-5">
+            <DoctorAvatar name={signedIn.name} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[15px] font-bold leading-tight">
+                {signedIn.name}
+              </p>
+              <p className="truncate text-xs text-muted">
+                {[signedIn.speciality, signedIn.room].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+            <ThemeToggle />
+            {/*
+              A real target, not a text link. This is pressed by someone
+              standing up to leave, often without looking — Fitts' Law says
+              make it big enough to hit in one motion.
+            */}
+            <Button
+              onClick={signOut}
+              className="h-11 px-4 text-sm"
+              style={{ minHeight: 44 }}
+            >
+              Sign out
+            </Button>
+          </div>
+        </header>
         {warnDefault && (
           <div className="mx-auto max-w-4xl px-5 pt-3">
             <Alert>

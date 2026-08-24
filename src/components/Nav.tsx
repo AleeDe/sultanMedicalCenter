@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   IconBook,
-  IconDisplay,
   IconGear,
   IconMedical,
   IconPrinter,
@@ -18,31 +17,45 @@ import { SyncStatus } from "@/components/SyncStatus";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 /*
-  Navigation.
+  Navigation, scoped to who is actually standing in front of the screen.
 
-  Two groups, because they are two different jobs and mixing them made the
-  bar read as one undifferentiated row of five:
+  This used to be one bar of seven destinations shown on every route, and it
+  was wrong in a way that got worse the busier the clinic got. Three separate
+  problems, all from treating one app as one audience:
 
-    DESK    — what reception does all day, in the order they do it.
-    ROOMS   — the two screens that run somewhere else in the building.
+    1. HICK'S LAW. Reception's job at the token screen is "make a token".
+       Putting seven equal-weight choices above that one task charges a
+       decision on every glance, all day, for a decision that was already
+       made when they walked to the desk.
 
-  /doctor and /display were previously reachable only by typing the URL,
-  which meant nobody found them. Hick's Law cuts both ways: hiding a
-  destination does not reduce choice, it just converts a decision into a
-  memory test.
+    2. WRONG AUDIENCE. /doctor and /display were in reception's bar, but
+       neither is ever opened from the reception desk — the doctor's screen
+       runs on a tablet in a consulting room and the board runs on a wall TV.
+       They were listed where they could not be used and absent where they
+       could.
+
+    3. NO SENSE OF PLACE. A doctor signing in saw the same chrome as the
+       billing clerk, so nothing on screen said whose machine this was.
+
+  So the bar now asks who is here, and shows only that:
+
+    DESK    Token, Queue, Billing, Day Book — reception's day, in order.
+            Admin is a single icon: needed rarely, and never mid-task.
+    ROOM    The doctor's own screen. No desk links at all; a doctor with a
+            patient in front of them has no use for Day Book.
+    BOARD   Nothing. The waiting-room TV is unattended and full-screen.
+
+  The screens that are not on the bar are reachable from Admin, which is
+  where "set up another screen" belongs — a setup task, done once, not a
+  destination reception navigates to hourly.
 */
 
+/** Reception's day, in the order they actually do it. */
 const DESK = [
   { href: "/", label: "New Token", Icon: IconTicket },
   { href: "/queue", label: "Queue", Icon: IconStethoscope },
   { href: "/billing", label: "Billing", Icon: IconReceipt },
   { href: "/day-book", label: "Day Book", Icon: IconBook },
-  { href: "/admin", label: "Admin", Icon: IconGear },
-];
-
-const ROOMS = [
-  { href: "/doctor", label: "Doctor", Icon: IconStethoscope },
-  { href: "/display", label: "Display", Icon: IconDisplay },
 ];
 
 function isActive(path: string, href: string) {
@@ -54,19 +67,15 @@ export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
   const { usbReady } = usePrinter();
   const [open, setOpen] = useState(false);
 
-  // The waiting-room board is unattended and full-screen; navigation there
-  // would only take space away from the token numbers.
-  if (path.startsWith("/display")) return null;
-
   /*
-    The doctor's screen keeps the nav but drops the desk links.
+    The board and the doctor's screen own their own chrome.
 
-    A doctor on a phone in their room has no use for Billing or Day Book, and
-    every extra target is one more thing between them and the queue. They get
-    a way back to the desk and nothing else.
+    Both are single-purpose screens on their own hardware, and both render a
+    header that says where you are — see DoctorHeader in the doctor route.
+    A shared bar here would only take space from the thing each screen
+    exists to show.
   */
-  const doctorView = path.startsWith("/doctor");
-  const links = doctorView ? ROOMS : [...DESK, ...ROOMS];
+  if (path.startsWith("/display") || path.startsWith("/doctor")) return null;
 
   return (
     <nav
@@ -90,17 +99,16 @@ export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
         </Link>
 
         {/* Desktop bar. Below `md` this collapses into the sheet below —
-            five tabs plus status chips cannot fit a phone without becoming
+            four tabs plus status chips cannot fit a phone without becoming
             targets too small to hit. */}
         <div className="hidden items-center gap-0.5 md:flex">
-          {links.map(({ href, label, Icon }) => {
+          {DESK.map(({ href, label, Icon }) => {
             const active = isActive(path, href);
             return (
               <Link
                 key={href}
                 href={href}
                 aria-current={active ? "page" : undefined}
-                target={href === "/display" ? "_blank" : undefined}
                 className={`relative inline-flex items-center gap-2 rounded-t-[8px] px-3.5 py-3.5
                   text-sm font-semibold transition-colors ${
                     active
@@ -146,6 +154,28 @@ export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
             </span>
           </Link>
 
+          {/*
+            Admin as an icon, not a tab.
+
+            It is a settings destination — visited when something needs
+            configuring, never as part of serving a patient. Giving it equal
+            weight to Queue implied it was part of the daily loop.
+          */}
+          <Link
+            href="/admin"
+            title="Settings"
+            aria-label="Settings"
+            aria-current={isActive(path, "/admin") ? "page" : undefined}
+            className={`hidden h-10 w-10 items-center justify-center rounded-[10px]
+              transition-colors md:inline-flex ${
+                isActive(path, "/admin")
+                  ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                  : "text-muted hover:bg-[var(--hover)] hover:text-[var(--accent)]"
+              }`}
+          >
+            <IconGear className="h-[18px] w-[18px]" />
+          </Link>
+
           <ThemeToggle />
 
           {/* Menu button — phone only. */}
@@ -154,7 +184,7 @@ export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
             aria-expanded={open}
             aria-label="Menu"
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-[10px]
+            className="inline-flex h-11 w-11 items-center justify-center rounded-[10px]
               border border-[var(--line-strong)] text-[var(--ink-2)] md:hidden"
           >
             <span aria-hidden className="text-lg leading-none">
@@ -167,27 +197,31 @@ export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
       {open && (
         <div className="animate-rise border-t border-[var(--line)] bg-[var(--surface)] p-3 md:hidden">
           <div className="grid gap-1">
-            {links.map(({ href, label, Icon }) => {
-              const active = isActive(path, href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setOpen(false)}
-                  target={href === "/display" ? "_blank" : undefined}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex items-center gap-3 rounded-[var(--r)] px-3 py-3 text-base
-                    font-semibold transition-colors ${
+            {[...DESK, { href: "/admin", label: "Settings", Icon: IconGear }].map(
+              ({ href, label, Icon }) => {
+                const active = isActive(path, href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setOpen(false)}
+                    aria-current={active ? "page" : undefined}
+                    // min-height rather than padding alone: a nav row on a
+                    // phone is a thumb target, and Fitts' Law is unforgiving
+                    // about the ones people hit in a hurry.
+                    className={`flex min-h-[48px] items-center gap-3 rounded-[var(--r)] px-3 py-3
+                    text-base font-semibold transition-colors ${
                       active
                         ? "bg-[var(--accent-soft)] text-[var(--accent)]"
                         : "text-[var(--ink-2)] hover:bg-[var(--hover)]"
                     }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  {label}
-                </Link>
-              );
-            })}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {label}
+                  </Link>
+                );
+              },
+            )}
           </div>
           <div className="mt-3 border-t border-[var(--line)] pt-3">
             <SyncStatus seriesIds={seriesIds} />
