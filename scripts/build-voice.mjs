@@ -8,29 +8,31 @@
   synthetic. This script replaces them with a real rendered voice that ships
   with the app.
 
-  WHY WHOLE PHRASES, NOT WORDS
+  WHAT IS RENDERED
 
-  An earlier version of this rendered ~14 single words ("token", "two",
-  "room") and stitched them at call time. It worked, and it never stopped
-  sounding assembled. Measuring the pitch of each clip shows why:
+  Fifteen clips, assembled at call time into:
+
+      "Token number,"  +  "seven," "zero," "five,"  +
+      "Please proceed to room number four."
+
+  An earlier version rendered one clip per WHOLE token number, which sounded
+  slightly better but imposed a ceiling — and production ran straight past
+  it. Token 705 was called when only 300 had been rendered, so the board fell
+  through to the browser's own voice: a male SAPI voice, the exact robotic
+  sound this script exists to replace. Any fixed range would have hit that
+  wall eventually, and covering 1..9999 would cost 181 MB and six hours.
+
+  An even earlier version stitched every WORD separately, including "token"
+  and "room", and never stopped sounding assembled. Measuring pitch showed
+  why:
 
       token 279 Hz | two 225 | five 225 | one 222 | seven 275 | room 256
 
-  Every word was synthesised in isolation, so every word carried its own
-  intonation contour. Real speech runs ONE contour across a phrase and lets
-  it fall at the end. Stitched words can be matched for loudness and spacing
-  — both of which that version did — but they cannot be given a shared
-  melody, so the result always read as a machine reciting a list.
-
-  So this renders whole PHRASES instead. The announcement has exactly two
-  variable parts and they are independent:
-
-      "Token number, two, five, one, seven."   <- one per token number
-      "Please proceed to room number one."     <- one per room
-
-  Each is a complete sentence with its own natural intonation, and the board
-  plays two of them back to back. One join instead of eight, and that join
-  falls at a sentence boundary where a real speaker pauses anyway.
+  Words synthesised in isolation each carry their own intonation contour, and
+  no spacing or loudness matching gives them a shared melody. So the fixed
+  parts of the sentence stay whole — only the digits, which genuinely vary,
+  are separate, and each is rendered with a trailing comma so its pitch stays
+  raised and they run together as one figure.
 
   WHY THIS BEATS AN API
 
@@ -39,8 +41,8 @@
   build time and shipped as MP3.
 
   Usage:
-    node scripts/build-voice.mjs              # default: 300 tokens
-    node scripts/build-voice.mjs --max 500    # busier clinic
+    node scripts/build-voice.mjs
+    node scripts/build-voice.mjs --voice en_US-amy-medium
 */
 import { existsSync, mkdirSync, writeFileSync, rmSync, statSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -63,29 +65,6 @@ function flag(name, fallback) {
   by the developer and never by the clinic.
 */
 const MODEL = flag("voice", "en_GB-cori-high");
-
-/*
-  How many token numbers to render.
-
-  The clinic's own history is the guide: this database averages 14 tokens a
-  day and has never exceeded 35, and the series resets at midnight. 300
-  therefore covers a day roughly ten times busier than any yet seen, and the
-  board falls back gracefully past it (see the fallback chain in
-  NowServing.tsx) rather than going silent.
-*/
-const MAX_TOKEN = Number(flag("max", "300"));
-
-/*
-  Emergency tokens are rendered over a much smaller range than normal ones.
-
-  They are a separate series that also resets daily, and this clinic's
-  history tops out at 5 in a day against 35 normal tokens — an emergency is
-  by nature rare. Rendering 300 of them doubled the shipped size for clips
-  that would essentially never play; 40 is already several times the worst
-  day on record, and anything past it falls back like any other out-of-range
-  token.
-*/
-const MAX_EMERGENCY = Number(flag("emergency", "40"));
 
 /** Rooms to render. Read from the database would couple a build step to a
     live connection; these are stable and cheap to over-cover. */
@@ -113,56 +92,58 @@ if (!existsSync(path.join(VOICES, `${MODEL}.onnx`))) {
 }
 
 /**
- * Digits, read out one at a time and separated by commas.
+ * Digit names.
  *
- * "22" becomes "two, two" rather than "twenty two". A patient is matching
- * against digits printed on a slip, one character at a time, and a quantity
- * is harder to match than the figures themselves.
- *
- * The commas are load-bearing: they are what make the voice pause between
- * digits, which is the difference between a number that can be caught across
- * a noisy room and one that cannot.
+ * A token is read one digit at a time — "705" is "seven, zero, five", not
+ * "seven hundred and five". The patient is matching figures printed on a
+ * slip, one character at a time, and a quantity is harder to match than the
+ * figures themselves.
  */
 const WORD = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
-function digits(n) {
-  return String(n)
-    .split("")
-    .map((d) => WORD[Number(d)])
-    .join(", ");
-}
-
-/*
-  The lines to render.
-
-  Two families, deliberately kept independent so the count stays small: any
-  token can be followed by any room, and rendering them separately means
-  300 + 8 clips instead of 300 x 8 = 2,400.
-*/
+/* The lines to render. */
 const lines = [];
 
-for (let n = 1; n <= MAX_TOKEN; n++) {
-  // A full stop, not a comma: this half is a complete sentence, so the pitch
-  // falls at the end the way a speaker's would.
-  lines.push({ id: `t${n}`, text: `Token number, ${digits(n)}.` });
-}
+/*
+  The lead-in and the ten digits, rendered separately.
 
-for (let n = 1; n <= MAX_EMERGENCY; n++) {
-  // Emergency tokens lead with the flag, which explains to everyone else why
-  // this call jumped the queue.
-  lines.push({ id: `e${n}`, text: `Emergency. Token number, ${digits(n)}.` });
-}
+  This is what removes the ceiling. Rendering one clip per whole token number
+  meant a fixed range, and production had already run past it: token 705 was
+  called when only 300 had been rendered, so the board fell through to the
+  browser's own voice — a male SAPI voice reading the number, which is
+  exactly the robotic sound this whole exercise set out to remove.
+
+  Any range would have hit the same wall eventually; covering 1..9999 would
+  cost 181 MB and six hours of rendering. Fifteen clips cover every number
+  there will ever be.
+
+  Each digit is rendered WITH A TRAILING COMMA. That is the load-bearing
+  detail: a comma keeps the pitch up, the way a speaker's voice stays raised
+  mid-number, so the digits run together as one figure. A digit synthesised
+  alone gets the falling, finished contour of an answer to a question — play
+  four of those in a row and they sound like four separate numbers, which is
+  what made an earlier word-by-word version sound like a machine reading a
+  list.
+*/
+lines.push({ id: "tok", text: "Token number," });
+
+// Emergency tokens lead with the flag, which explains to everyone else why
+// this call jumped the queue.
+lines.push({ id: "emg", text: "Emergency. Token number," });
+
+WORD.forEach((w, i) => {
+  lines.push({ id: `d${i}`, text: `${w},` });
+});
 
 for (let r = 1; r <= MAX_ROOM; r++) {
   lines.push({ id: `r${r}`, text: `Please proceed to room number ${WORD[r] ?? r}.` });
 }
 
-// Spoken when a token has no room assigned — rare, but it must not be silent.
 lines.push({ id: "r0", text: "Please proceed to the reception desk." });
 
 console.log(
   `voice: Piper ${MODEL}   pace=${PACE}\n` +
-    `lines: ${lines.length}  (${MAX_TOKEN} tokens x2, ${MAX_ROOM} rooms)`,
+    `lines: ${lines.length}  (lead-ins, 10 digits, ${MAX_ROOM} rooms)`,
 );
 
 rmSync(OUT, { recursive: true, force: true });

@@ -95,28 +95,34 @@ export function chime() {
   shipped as MP3, so the board sounds the same on every machine and needs no
   network, no API key, and no per-call cost.
 
-  WHOLE PHRASES, NOT WORDS
+  WHOLE PHRASES WHERE THEY ARE FIXED, DIGITS WHERE THEY VARY
 
-  An earlier version of this stitched ~14 single-word clips ("token", "two",
-  "room") into a sentence. It never stopped sounding assembled, and the
-  reason is not something gap tuning can reach — measuring the pitch of each
-  clip shows it plainly:
+      "Token number,"  +  "seven," "zero," "five,"  +
+      "Please proceed to room number four."
+
+  Two earlier versions failed in opposite directions, and the current shape
+  is what is left after both.
+
+  The first stitched EVERY word, "token" and "room" included, and never
+  stopped sounding assembled. Measuring the pitch of each clip shows why:
 
       token 279 Hz | two 225 | five 225 | one 222 | seven 275 | room 256
 
-  Each word was synthesised alone, so each carried its own intonation
-  contour. Real speech runs ONE contour across a phrase and lets it fall at
-  the end; isolated words can be matched for loudness and spacing — both of
-  which that version did — but they cannot be given a shared melody.
+  Words synthesised alone each carry their own intonation contour, and no
+  amount of loudness matching or gap tuning gives them a shared melody.
 
-  So the announcement is two whole phrases instead:
+  The second rendered one clip per WHOLE token number, which sounded better
+  but imposed a ceiling — and production ran straight past it. Token 705 was
+  called when only 300 had been rendered, so the board fell through to the
+  browser's own voice: a male SAPI voice, the exact robotic sound this
+  module exists to avoid. Any fixed range would have hit that wall
+  eventually, and rendering 1..9999 would cost 181 MB.
 
-      "Token number, two, five, one, seven."     <- one clip per token
-      "Please proceed to room number one."       <- one clip per room
-
-  Each is a complete sentence with its own natural fall, and they are
-  independent, so 300 tokens and 8 rooms cost 308 clips rather than 2,400.
-  One join, at a sentence boundary where a speaker would pause anyway.
+  So the fixed parts of the sentence stay whole, and only the digits — the
+  part that genuinely varies — are separate. Each digit is rendered with a
+  trailing comma, which keeps its pitch raised the way a speaker's stays up
+  mid-number, so the figures run together instead of landing as separate
+  answers. Fifteen clips cover every token number there will ever be.
 */
 
 const CLIP_BASE = "/voice";
@@ -141,9 +147,8 @@ export function phraseVoiceReady(): boolean {
 /**
  * Fetches and decodes one clip, remembering it for next time.
  *
- * Returns null when the clip does not exist — which is a normal condition,
- * not an error: the build renders a fixed number of token numbers, and a
- * clinic busier than that will ask for one past the end.
+ * Returns null when the clip does not exist or cannot be decoded, so callers
+ * can fall back rather than announce a sentence with a hole in it.
  */
 async function clip(id: string): Promise<AudioBuffer | null> {
   const cached = clips.get(id);
@@ -157,9 +162,10 @@ async function clip(id: string): Promise<AudioBuffer | null> {
     if (!res.ok) return null;
     const buf = await a.decodeAudioData(await res.arrayBuffer());
 
-    // Bounded: a board left running for weeks would otherwise hold every
-    // announcement of every day.
-    if (clips.size >= 400) {
+    // The whole vocabulary is ~20 clips, so this never evicts in practice;
+    // the bound is here so a future addition cannot turn the cache into a
+    // slow leak on a board that runs for weeks.
+    if (clips.size >= 100) {
       const oldest = clips.keys().next().value;
       if (oldest !== undefined) clips.delete(oldest);
     }
@@ -178,12 +184,12 @@ async function clip(id: string): Promise<AudioBuffer | null> {
  * than finding it out mid-announcement.
  */
 export async function loadVoice(): Promise<boolean> {
-  phraseVoice = (await clip("t1")) !== null && (await clip("r1")) !== null;
+  phraseVoice = (await clip("tok")) !== null && (await clip("r1")) !== null;
   return phraseVoice;
 }
 
 /**
- * The two clip ids for a call.
+ * The clips to play for a call, in order.
  *
  * Mirrors the announcement's priorities: the token number leads because it
  * is what the patient holds in their hand and matches, the room follows
@@ -194,35 +200,27 @@ export async function loadVoice(): Promise<boolean> {
  * out exactly one person without announcing who they are to everyone. The
  * board shows the name in full for whoever needs to check it.
  */
-export function clipIds(
-  displayNo: string,
-  room: string | null,
-): { token: string; tokenAlt: string | null; room: string } | null {
+export function clipIds(displayNo: string, room: string | null): string[] | null {
   const m = /^(.*?)[-\s]?([0-9]+)$/.exec(displayNo);
   if (!m) return null;
 
-  // Leading zeros are not spoken: nobody says "zero zero zero two two".
+  // Leading zeros are not spoken: nobody says "zero zero zero seven, zero,
+  // five" for token 00705.
   const n = Number(m[2]);
   if (!Number.isFinite(n) || n < 1) return null;
 
-  /*
-    An emergency token gets the variant that leads with the flag, which
-    explains to everyone else why this call jumped the queue.
+  // An emergency token leads with the flag, which explains to everyone else
+  // why this call jumped the queue.
+  const seq = [/^ER/i.test(displayNo) ? "emg" : "tok"];
 
-    The plain variant is offered as a second choice rather than treating a
-    missing emergency clip as failure: emergency clips are rendered over a
-    much smaller range (they are rare), so a high emergency number would
-    otherwise drop all the way to the synthetic browser voice when the
-    correct number is sitting right there, only without the flag word.
-  */
-  const emergency = /^ER/i.test(displayNo);
-  const token = `${emergency ? "e" : "t"}${n}`;
-  const tokenAlt = emergency ? `t${n}` : null;
+  for (const d of String(n)) seq.push(`d${d}`);
 
-  // "Room 3" -> r3. A token with no room falls back to the reception line
-  // rather than to silence.
-  const digits = room ? /(\d+)/.exec(room)?.[1] : null;
-  return { token, tokenAlt, room: `r${digits ?? 0}` };
+  // "Room 3" -> r3. A token with no room is sent to reception rather than
+  // left with an announcement that says nothing about where to go.
+  const roomDigits = room ? /(\d+)/.exec(room)?.[1] : null;
+  seq.push(`r${roomDigits ?? 0}`);
+
+  return seq;
 }
 
 /**
@@ -248,48 +246,56 @@ export async function speakAnnouncement(
   const ids = clipIds(displayNo, room);
   if (!ids) return 0;
 
-  const [firstChoice, roomClip] = await Promise.all([
-    clip(ids.token),
-    clip(ids.room),
-  ]);
-  let tokenClip = firstChoice;
+  const buffers = await Promise.all(ids.map(clip));
 
-  // An emergency number past the rendered emergency range still announces,
-  // using the plain token clip. Losing the word "Emergency" is a far smaller
-  // loss than dropping to a synthetic voice, or to nothing.
-  if (!tokenClip && ids.tokenAlt) tokenClip = await clip(ids.tokenAlt);
-
-  // The token half is the part that cannot be improvised. Without it there
-  // is no announcement worth making, so fall back rather than play half.
-  if (!tokenClip) return 0;
+  // Every clip must be present. A missing one would leave a hole in the
+  // middle of a number — "seven, ..., five" — which is worse than announcing
+  // in a plainer voice, because the patient cannot tell a digit was lost.
+  if (buffers.some((b) => !b)) return 0;
 
   /*
-    Scheduled on the audio clock rather than with a timer.
+    Scheduled on the audio clock rather than with timers.
 
-    The second phrase must begin a fixed moment after the first ends, and
-    setTimeout drifts by several milliseconds — audible here as a join that
-    wobbles from one call to the next.
+    Each clip must begin a fixed moment after the last one ends, and
+    setTimeout drifts by several milliseconds per call — across a
+    five-clip announcement that is audible as an unsteady rhythm.
 
-    The gap is a real pause because both clips are trimmed to their first and
-    last sound (see scripts/normalise-voice.py); it is not stacked on top of
-    Piper's own padding the way an untrimmed clip's would be.
+    The gaps are real pauses because every clip is trimmed to its first and
+    last sound (see scripts/normalise-voice.py); they are not stacked on top
+    of Piper's own padding the way untrimmed clips' would be.
   */
-  const GAP = 0.25;
+  // Between consecutive digits: tight, so they read as one number rather
+  // than a list of separate figures.
+  const DIGIT_GAP = 0.06;
+  // After "Token number," — a beat before the figures start.
+  const LEAD_GAP = 0.16;
+  // Before the room instruction, where a speaker would draw breath.
+  const BREATH = 0.3;
 
   const start = a.currentTime + 0.06;
   let at = start;
-  for (const buf of [tokenClip, roomClip]) {
-    if (!buf) continue;
+
+  ids.forEach((id, i) => {
+    const buf = buffers[i];
+    if (!buf) return;
     const src = a.createBufferSource();
     src.buffer = buf;
     src.connect(a.destination);
     src.start(at);
-    at += buf.duration + GAP;
-  }
 
-  // How long the whole thing runs, less the trailing gap that was added
-  // after the final clip.
-  return at - GAP - start;
+    // The gap that FOLLOWS this clip depends on what comes next, which is
+    // why it is chosen from the next id rather than this one.
+    const next = ids[i + 1];
+    let gap = 0;
+    if (next === undefined) gap = 0;
+    else if (next.startsWith("r")) gap = BREATH;
+    else if (id === "tok" || id === "emg") gap = LEAD_GAP;
+    else gap = DIGIT_GAP;
+
+    at += buf.duration + gap;
+  });
+
+  return at - start;
 }
 
 /*
