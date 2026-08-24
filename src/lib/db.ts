@@ -121,7 +121,26 @@ if (process.env.VERCEL && !isTransactionPooler) {
 }
 
 export const sql = postgres(connectionString, {
-  max: Number(process.env.DB_POOL_MAX ?? (isTransactionPooler ? 3 : 5)),
+  /*
+    Pool size, and it must exceed what a single page asks for at once.
+
+    This was 3 on the transaction pooler, chosen to be frugal with the
+    project's connection budget. But getQueues() fans out five queries per
+    active doctor — twenty in parallel with four doctors — and a page cannot
+    finish until every one of them has had a connection. With a pool of
+    three, seventeen of those sat waiting for a slot while the three holders
+    waited for the page to finish, and the request hung until the platform
+    killed it. /queue, /billing, /day-book and /display all timed out; only
+    the pages with few enough queries to fit came back.
+
+    The widest page is /admin, which loads its own six queries alongside
+    getAnalytics — around twenty in flight at once. Twenty is therefore the
+    floor, not a generous margin, and it is still modest: the transaction
+    pooler multiplexes these onto a far smaller backend pool, so this is not
+    twenty Postgres backends per instance. Overridable, because the right
+    number tracks the doctor count and the analytics fan-out.
+  */
+  max: Number(process.env.DB_POOL_MAX ?? (isTransactionPooler ? 20 : 10)),
 
   /*
     Short idle timeout on serverless. A lambda is frozen between requests

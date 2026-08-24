@@ -397,11 +397,25 @@ function fmt(v: string | number) {
  * cased ("Dr. Ahmed Raza", "X-Ray Chest"). Lower-casing everything mangled the
  * latter, so only all-caps values are re-cased.
  */
-function label(s: string) {
+function label(s: string | null | undefined) {
+  /*
+    Guarded despite the type saying otherwise.
+
+    These rows come back from SQL aggregates, and a grouping key can be null
+    where the underlying column is nullable — a service with no category, a
+    token with no doctor. TypeScript types a query result as whatever the
+    caller declared, so `string` here was a claim about the data rather than
+    a fact about it, and the first null crashed the whole analytics page with
+    "Cannot read properties of undefined (reading 'charAt')".
+
+    A display helper must never be the thing that takes a page down. An
+    unnamed row renders as a dash and the rest of the table still reads.
+  */
+  if (!s) return "—";
   if (s !== s.toUpperCase()) return s;
   return s
     .toLowerCase()
     .split(" ")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
     .join(" ");
 }
