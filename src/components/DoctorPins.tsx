@@ -42,7 +42,7 @@ export function DoctorPins() {
       return;
     }
     start(async () => {
-      const res = await resetDoctorPin(target.id, pin, "Admin");
+      const res = await resetDoctorPin(target.id, pin);
       if (res.ok) {
         setMsg({ ok: true, text: `${target.name} has a new PIN.` });
         setTarget(null);

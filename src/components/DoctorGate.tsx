@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { checkDoctorPin } from "@/app/actions/queue";
+import { signInDoctor, signOut as endSession } from "@/app/actions/auth";
 import { Alert, Button, Card, DoctorAvatar } from "@/components/ui";
 import { IconLock, IconStethoscope } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -49,6 +49,9 @@ export function DoctorGate({
   const pinRef = useRef<HTMLInputElement>(null);
 
   const signOut = useCallback(() => {
+    // Destroy the server session too, not just the local view — otherwise the
+    // cookie would keep authorising actions after "sign out".
+    void endSession();
     setSignedIn(null);
     setPin("");
     setError(null);
@@ -77,9 +80,12 @@ export function DoctorGate({
     if (picked === null) return;
     setError(null);
     start(async () => {
-      const res = await checkDoctorPin(picked, pin);
+      // Signing in now mints a SERVER session — the doctor's actions are
+      // authorised by that cookie, not by this component's state. The old
+      // path only flipped a boolean in the browser, which authorised nothing.
+      const res = await signInDoctor(picked, pin);
       if (!res.ok) {
-        setError("Incorrect PIN.");
+        setError(res.error);
         setPin("");
         pinRef.current?.focus();
         return;

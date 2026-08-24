@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { sql } from "@/lib/db";
+import { requireReception } from "@/lib/auth";
 import type { ActionResult } from "@/app/actions/tokens";
 
 /*
@@ -38,6 +39,7 @@ const leaseSchema = z.object({
 export async function leaseBlock(
   input: z.input<typeof leaseSchema>,
 ): Promise<ActionResult<LeasedBlock>> {
+  await requireReception();
   const parsed = leaseSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid lease request." };
   const v = parsed.data;
@@ -107,6 +109,7 @@ export type SyncTokenInput = z.input<typeof syncSchema>;
 export async function syncToken(
   input: SyncTokenInput,
 ): Promise<ActionResult<{ display_no: string; alreadyPresent: boolean }>> {
+  await requireReception();
   const parsed = syncSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: "This queued token could not be read." };
@@ -168,15 +171,16 @@ export async function syncToken(
                                   ${v.leaseId})
       `;
 
-      const [series] = await tx<{ label: string }[]>`
-        select label from token_series where id = ${v.seriesId}
+      // Fee derived from the series, not taken from the client (TG-03).
+      const [series] = await tx<{ label: string; base_fee: string }[]>`
+        select label, base_fee from token_series where id = ${v.seriesId}
       `;
 
       await tx`
         insert into visit_item (visit_id, service_id, name_snapshot,
                                 unit_price_snapshot, qty, status, added_by)
-        values (${tok.visit_id}, null, ${series.label + " Fee"}, ${v.fee}, 1,
-                'PAID', ${v.staffId})
+        values (${tok.visit_id}, null, ${series.label + " Fee"},
+                ${Number(series.base_fee)}, 1, 'PAID', ${v.staffId})
       `;
 
       if (v.serviceIds.length > 0) {

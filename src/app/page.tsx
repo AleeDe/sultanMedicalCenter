@@ -1,4 +1,5 @@
 import { NewTokenForm } from "@/components/NewTokenForm";
+import { guardReceptionPage } from "@/lib/auth";
 import { RoleLauncher } from "@/components/RoleLauncher";
 import {
   getClinic,
@@ -11,6 +12,7 @@ import { getServices } from "@/app/actions/ledger";
 export const dynamic = "force-dynamic";
 
 export default async function NewTokenPage() {
+  await guardReceptionPage("/");
   const [series, clinic, staff, services, doctors] = await Promise.all([
     getSeries(),
     getClinic(),

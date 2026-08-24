@@ -3,6 +3,7 @@
 import { z } from "zod";
 import type postgres from "postgres";
 import { sql } from "@/lib/db";
+import { requireReception } from "@/lib/auth";
 import { tierFor } from "@/lib/loyalty";
 import type {
   ClinicSetting,
@@ -25,6 +26,8 @@ const issueSchema = z.object({
   age: z.coerce.number().int().min(0).max(130).nullable(),
   address: z.string().trim().max(200).default(""),
   seriesId: z.coerce.number().int().positive(),
+  // Accepted for backward compatibility but IGNORED: the server derives the
+  // fee from the series inside issueToken. Never trust this value (TG-03).
   fee: z.coerce.number().min(0),
   staffId: z.coerce.number().int().positive().nullable(),
   // Lab tests / services chosen at the counter, billed and paid together with
@@ -83,6 +86,9 @@ export async function getStaff(): Promise<Staff[]> {
 export async function lookupByPhone(
   phone: string,
 ): Promise<PatientWithTier[]> {
+  // Returns patient PII, so it is reception-only and — with the lockout on
+  // sign-in — no longer an open enumeration endpoint (TG-04).
+  await requireReception();
   const trimmed = phone.trim();
   if (trimmed.length < 4) return [];
 
@@ -110,6 +116,7 @@ export async function lookupByPhone(
 export async function issueToken(
   input: IssueTokenInput,
 ): Promise<ActionResult<TokenReceipt>> {
+  await requireReception();
   const parsed = issueSchema.safeParse(input);
   if (!parsed.success) {
     const flat = z.flattenError(parsed.error);
@@ -163,14 +170,23 @@ export async function issueToken(
 
       // The consultation fee is the first ledger line, marked PAID because it
       // is collected at the counter before the token is handed over.
+      //
+      // The price is read HERE, from the series, not taken from the request.
+      // The client used to send the fee and the server trusted it, so a
+      // crafted request could record an Emergency token as paid zero (TG-03).
+      // The services below always did this correctly; the consultation fee
+      // now matches them.
       const [series] = await tx<
-        { code: string; label: string; is_emergency: boolean }[]
-      >`select code, label, is_emergency from token_series where id = ${v.seriesId}`;
+        { code: string; label: string; is_emergency: boolean; base_fee: string }[]
+      >`select code, label, is_emergency, base_fee
+          from token_series where id = ${v.seriesId}`;
+
+      const fee = Number(series.base_fee);
 
       await tx`
         insert into visit_item (visit_id, service_id, name_snapshot,
                                 unit_price_snapshot, qty, status, added_by)
-        values (${tok.visit_id}, null, ${series.label + " Fee"}, ${v.fee}, 1,
+        values (${tok.visit_id}, null, ${series.label + " Fee"}, ${fee}, 1,
                 'PAID', ${v.staffId})
       `;
 
@@ -178,7 +194,7 @@ export async function issueToken(
       // in this same transaction, so a later price change cannot rewrite this
       // slip, and they are PAID because the patient settles everything now.
       const lines: ReceiptLine[] = [
-        { name: `${series.label} Fee`, amount: v.fee.toFixed(2) },
+        { name: `${series.label} Fee`, amount: fee.toFixed(2) },
       ];
 
       if (v.serviceIds.length > 0) {
@@ -218,7 +234,7 @@ export async function issueToken(
       const actor = await actorName(tx, v.staffId);
       const detail = tx.json({
         display_no: tok.display_no,
-        fee: v.fee,
+        fee,
         labs: lines.length - 1,
         total,
         patient: patient.mrn,
@@ -275,7 +291,7 @@ export async function issueToken(
         doctor_name: doctor?.name ?? null,
         doctor_room: doctor?.room || null,
         wait_minutes: waitMinutes,
-        fee: v.fee.toFixed(2),
+        fee: fee.toFixed(2),
         lines,
         total: total.toFixed(2),
         tier: tierFor(count) as LoyaltyTier,

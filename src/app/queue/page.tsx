@@ -1,10 +1,12 @@
 import { QueueBoard } from "@/components/QueueBoard";
+import { guardReceptionPage } from "@/lib/auth";
 import { getQueues } from "@/app/actions/queue";
 
 export const dynamic = "force-dynamic";
 
 /** Reception's view: every doctor's queue on one screen. */
 export default async function QueuePage() {
+  await guardReceptionPage("/queue");
   const queues = await getQueues();
 
   return (

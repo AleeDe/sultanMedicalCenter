@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { guardAdminPage } from "@/lib/auth";
 import { AdminGate } from "@/components/AdminGate";
 import { AdminScreen } from "@/components/AdminScreen";
 import {
@@ -12,6 +13,21 @@ import { getClinic, getStaff } from "@/app/actions/tokens";
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
+  // Must be signed in at all (redirects to login if not); the ADMIN role is a
+  // second step, taken via the PIN below.
+  const session = await guardAdminPage();
+
+  /*
+    The settings data is admin-gated on the server, so it is fetched only once
+    the session actually holds the ADMIN role. A reception user reaching this
+    route sees the admin PIN prompt with no data behind it — the elevation
+    happens in AdminGate, which refreshes the page, and this fetch then runs.
+    This ordering is what stops the page throwing before the gate can render.
+  */
+  if (session.role !== "ADMIN") {
+    return <AdminGate />;
+  }
+
   const [series, services, clinic, staff, doctors, analytics, h] =
     await Promise.all([
       getAllSeries(),
@@ -30,16 +46,14 @@ export default async function AdminPage() {
   const appUrl = `${proto}://${host}`;
 
   return (
-    <AdminGate>
-      <AdminScreen
-        series={series}
-        services={services}
-        clinic={clinic}
-        staff={staff}
-        doctors={doctors}
-        analytics={analytics}
-        appUrl={appUrl}
-      />
-    </AdminGate>
+    <AdminScreen
+      series={series}
+      services={services}
+      clinic={clinic}
+      staff={staff}
+      doctors={doctors}
+      analytics={analytics}
+      appUrl={appUrl}
+    />
   );
 }

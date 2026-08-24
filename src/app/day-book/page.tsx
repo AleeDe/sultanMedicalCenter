@@ -1,4 +1,5 @@
 import { sql } from "@/lib/db";
+import { guardReceptionPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ type TokenRow = {
 };
 
 export default async function DayBookPage() {
+  await guardReceptionPage("/day-book");
   // All figures are for today in the clinic timezone, matching the day the
   // token series itself resets on.
   const [bySeries, byCategory, tokens, [totals]] = await Promise.all([

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { checkAdminPin } from "@/app/actions/admin";
+import { useRouter } from "next/navigation";
+import { signInAdmin, signOut } from "@/app/actions/auth";
 import { Alert, Button, Card } from "@/components/ui";
 import { IconLock } from "@/components/icons";
 
@@ -19,7 +20,8 @@ const IDLE_MS = 5 * 60 * 1000;
  * The unlock lives in component state only: it does not survive a reload or a
  * new tab, which is the behaviour people expect from a lock.
  */
-export function AdminGate({ children }: { children: React.ReactNode }) {
+export function AdminGate({ children }: { children?: React.ReactNode }) {
+  const router = useRouter();
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,10 +30,14 @@ export function AdminGate({ children }: { children: React.ReactNode }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const lock = useCallback(() => {
+    // Ending the admin session drops back to the reception role, so the
+    // money-changing actions are locked again on the server, not just hidden.
+    void signOut();
     setUnlocked(false);
     setPin("");
     setError(null);
-  }, []);
+    router.refresh();
+  }, [router]);
 
   useEffect(() => {
     if (!unlocked) inputRef.current?.focus();
@@ -56,13 +62,18 @@ export function AdminGate({ children }: { children: React.ReactNode }) {
   function submit() {
     setError(null);
     start(async () => {
-      const res = await checkAdminPin(pin);
+      // Admin sign-in mints a server session with the ADMIN role; the
+      // settings actions check for it. Unlocking used to be browser-only.
+      const res = await signInAdmin(pin);
       if (res.ok) {
         setUnlocked(true);
         setWarnDefault(res.isDefault);
         setPin("");
+        // The admin page fetches its data only once the session holds the
+        // ADMIN role, so re-run the server render now that it does.
+        router.refresh();
       } else {
-        setError("Incorrect PIN.");
+        setError(res.error);
         setPin("");
         inputRef.current?.focus();
       }

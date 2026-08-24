@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
 import type { ActionResult } from "@/app/actions/tokens";
+import { requireAdmin, requireDoctor, requireStaff, verifyDoctorPin } from "@/lib/auth";
 
 /*
   Queue operations.
@@ -154,6 +155,7 @@ export async function callNext(
 ): Promise<ActionResult<{ display_no: string; patient_name: string } | null>> {
   const id = idSchema.safeParse(doctorId);
   if (!id.success) return { ok: false, error: "Unknown doctor." };
+  await requireDoctor(id.data);
 
   try {
     const [row] = await sql<
@@ -173,6 +175,7 @@ export async function startConsultation(
 ): Promise<ActionResult<null>> {
   const id = idSchema.safeParse(tokenId);
   if (!id.success) return { ok: false, error: "Unknown token." };
+  await requireStaff();
   await sql`select start_consultation(${id.data})`;
   revalidatePath("/queue");
   return { ok: true, data: null };
@@ -183,6 +186,7 @@ export async function finishConsultation(
 ): Promise<ActionResult<null>> {
   const id = idSchema.safeParse(tokenId);
   if (!id.success) return { ok: false, error: "Unknown token." };
+  await requireStaff();
   await sql`select finish_consultation(${id.data})`;
   revalidatePath("/queue");
   return { ok: true, data: null };
@@ -194,6 +198,7 @@ export async function skipToken(
 ): Promise<ActionResult<{ status: string }>> {
   const id = idSchema.safeParse(tokenId);
   if (!id.success) return { ok: false, error: "Unknown token." };
+  await requireStaff();
   const [row] = await sql<{ skip_token: string }[]>`
     select skip_token(${id.data})
   `;
@@ -207,6 +212,7 @@ export async function recallToken(
 ): Promise<ActionResult<null>> {
   const id = idSchema.safeParse(tokenId);
   if (!id.success) return { ok: false, error: "Unknown token." };
+  await requireStaff();
   await sql`select recall_token(${id.data})`;
   revalidatePath("/queue");
   return { ok: true, data: null };
@@ -226,6 +232,7 @@ export async function announceAgain(
 ): Promise<ActionResult<null>> {
   const id = idSchema.safeParse(tokenId);
   if (!id.success) return { ok: false, error: "Unknown token." };
+  await requireStaff();
   await sql`select announce_again(${id.data})`;
   revalidatePath("/queue");
   return { ok: true, data: null };
@@ -250,6 +257,8 @@ export async function setDoctorState(
   const parsed = breakSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid request." };
   const v = parsed.data;
+  // A doctor may set their own break; reception/admin may set anyone's.
+  await requireDoctor(v.doctorId);
 
   const returnAt =
     v.state === "ON_BREAK" && v.minutes
@@ -292,6 +301,9 @@ export async function changeDoctorPin(
   currentPin: string,
   newPin: string,
 ): Promise<ActionResult<null>> {
+  // The doctor changing their own PIN — must be signed in as that doctor.
+  await requireDoctor(doctorId);
+
   if (!/^\d{4,6}$/.test(newPin.trim())) {
     return { ok: false, error: "New PIN must be 4 to 6 digits." };
   }
@@ -299,10 +311,19 @@ export async function changeDoctorPin(
     return { ok: false, error: "Choose something other than 1234." };
   }
 
-  const check = await checkDoctorPin(doctorId, currentPin);
+  // Verify the current PIN through the lockout-aware path.
+  const check = await verifyDoctorPin(doctorId, currentPin.trim());
+  if (check.lockedSeconds > 0) {
+    return { ok: false, error: "Too many attempts. Try again shortly." };
+  }
   if (!check.ok) return { ok: false, error: "Current PIN is incorrect." };
 
-  await sql`select set_doctor_pin(${doctorId}, ${newPin.trim()})`;
+  await sql`
+    update doctor
+       set pin_bcrypt = crypt(${newPin.trim()}, gen_salt('bf', 10)),
+           pin_hash = null, pin_salt = null
+     where id = ${doctorId}
+  `;
   await sql`
     insert into audit_log (actor, action, entity, entity_id)
     values ('Doctor', 'CHANGE_DOCTOR_PIN', 'doctor', ${String(doctorId)})
@@ -356,8 +377,12 @@ export async function getWaitAccuracy(
 export async function resetDoctorPin(
   doctorId: number,
   newPin: string,
-  actor: string,
 ): Promise<ActionResult<null>> {
+  // Admin-only, and the actor is taken from the VERIFIED session — never from
+  // a caller-supplied argument, which was forgeable and let the audit log be
+  // written under any name (part of TG-01).
+  const session = await requireAdmin();
+
   const clean = newPin.trim();
   if (!/^\d{4,8}$/.test(clean)) {
     return { ok: false, error: "PIN must be 4 to 8 digits." };
@@ -366,11 +391,17 @@ export async function resetDoctorPin(
     return { ok: false, error: "Pick something other than the default 1234." };
   }
 
-  await sql`select set_doctor_pin(${doctorId}, ${clean})`;
+  // bcrypt, and clear the legacy sha256 columns so the old hash cannot be
+  // used to verify after a reset.
+  await sql`
+    update doctor
+       set pin_bcrypt = crypt(${clean}, gen_salt('bf', 10)),
+           pin_hash = null, pin_salt = null
+     where id = ${doctorId}
+  `;
   await sql`
     insert into audit_log (actor, action, entity, entity_id)
-    values (${actor || "Admin"}, 'RESET_DOCTOR_PIN', 'doctor',
-            ${String(doctorId)})
+    values (${session.actor}, 'RESET_DOCTOR_PIN', 'doctor', ${String(doctorId)})
   `;
   return { ok: true, data: null };
 }
@@ -379,10 +410,15 @@ export async function resetDoctorPin(
 export async function getDefaultPinDoctors(): Promise<
   { id: number; name: string }[]
 > {
+  await requireAdmin();
   return sql<{ id: number; name: string }[]>`
     select id, name from doctor
      where active
-       and pin_hash = encode(digest(pin_salt || '1234', 'sha256'), 'hex')
+       and (
+         (pin_bcrypt is not null and pin_bcrypt = crypt('1234', pin_bcrypt))
+         or (pin_bcrypt is null and pin_hash =
+             encode(digest(coalesce(pin_salt,'') || '1234', 'sha256'), 'hex'))
+       )
      order by sort_order, name
   `;
 }

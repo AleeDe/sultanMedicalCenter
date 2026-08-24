@@ -4,6 +4,7 @@ import { z } from "zod";
 import type postgres from "postgres";
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
+import { requireReception } from "@/lib/auth";
 import { tierFor } from "@/lib/loyalty";
 import type { ActionResult } from "@/app/actions/tokens";
 import type { LoyaltyTier } from "@/lib/types";
@@ -49,6 +50,7 @@ export type ServiceRow = {
 };
 
 export async function getServices(): Promise<ServiceRow[]> {
+  await requireReception();
   return sql<ServiceRow[]>`
     select id, code, name, category, price
       from service where active
@@ -60,6 +62,7 @@ export async function getServices(): Promise<ServiceRow[]> {
 
 /** Today's open visits, for the "which patient am I billing?" list. */
 export async function getOpenVisits() {
+  await requireReception();
   return sql<
     {
       visit_id: number;
@@ -90,6 +93,7 @@ export async function getOpenVisits() {
 
 /** Finds a visit by token number (NORM-00042 or the full unique id). */
 export async function findVisit(query: string): Promise<VisitLedger | null> {
+  await requireReception();
   const q = query.trim().toUpperCase();
   if (!q) return null;
 
@@ -106,6 +110,7 @@ export async function findVisit(query: string): Promise<VisitLedger | null> {
 }
 
 export async function getLedger(visitId: number): Promise<VisitLedger | null> {
+  await requireReception();
   return loadLedger(sql, visitId);
 }
 
@@ -185,6 +190,7 @@ const addSchema = z.object({
 export async function addItem(
   input: z.input<typeof addSchema>,
 ): Promise<ActionResult<VisitLedger>> {
+  await requireReception();
   const parsed = addSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: "Please check the item details." };
@@ -243,6 +249,7 @@ export async function markItemPaid(
   visitId: number,
   staffId: number | null,
 ): Promise<ActionResult<VisitLedger>> {
+  await requireReception();
   try {
     const ledger = await sql.begin(async (tx) => {
       await tx`
@@ -271,6 +278,7 @@ export async function removeItem(
   visitId: number,
   staffId: number | null,
 ): Promise<ActionResult<VisitLedger>> {
+  await requireReception();
   try {
     const ledger = await sql.begin(async (tx) => {
       const [row] = await tx<
@@ -311,6 +319,7 @@ export async function settleVisit(
   visitId: number,
   staffId: number | null,
 ): Promise<ActionResult<VisitLedger>> {
+  await requireReception();
   try {
     const ledger = await sql.begin(async (tx) => {
       const [visit] = await tx<{ status: string }[]>`

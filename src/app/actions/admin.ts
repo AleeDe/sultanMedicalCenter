@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
+import { requireAdmin } from "@/lib/auth";
 import type { ActionResult } from "@/app/actions/tokens";
 import type { ClinicSetting, Doctor, Staff, TokenSeries } from "@/lib/types";
 
@@ -16,6 +17,7 @@ export type AdminService = {
 };
 
 export async function getAllSeries(): Promise<TokenSeries[]> {
+  await requireAdmin();
   return sql<TokenSeries[]>`
     select id, code, label, is_emergency, base_fee, active, sort_order
       from token_series order by sort_order, id
@@ -23,6 +25,7 @@ export async function getAllSeries(): Promise<TokenSeries[]> {
 }
 
 export async function getAllServices(): Promise<AdminService[]> {
+  await requireAdmin();
   return sql<AdminService[]>`
     select id, code, name, category, price, active
       from service order by category, name
@@ -53,6 +56,7 @@ const seriesSchema = z.object({
 export async function updateSeries(
   input: z.input<typeof seriesSchema>,
 ): Promise<ActionResult<TokenSeries[]>> {
+  await requireAdmin();
   const parsed = seriesSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -120,6 +124,7 @@ const serviceSchema = z.object({
 export async function saveService(
   input: z.input<typeof serviceSchema>,
 ): Promise<ActionResult<AdminService[]>> {
+  await requireAdmin();
   const parsed = serviceSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: "Please check the item details." };
@@ -185,6 +190,7 @@ const clinicSchema = z.object({
 export async function saveClinic(
   input: z.input<typeof clinicSchema>,
 ): Promise<ActionResult<ClinicSetting>> {
+  await requireAdmin();
   const parsed = clinicSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: "Please check the clinic details." };
@@ -210,6 +216,7 @@ export async function saveClinic(
 /* ----------------------------------------------------------------- doctors */
 
 export async function getAllDoctors(): Promise<Doctor[]> {
+  await requireAdmin();
   return sql<Doctor[]>`
     select id, name, speciality, room, active, sort_order
       from doctor order by sort_order, name
@@ -227,6 +234,7 @@ const doctorSchema = z.object({
 export async function saveDoctor(
   input: z.input<typeof doctorSchema>,
 ): Promise<ActionResult<Doctor[]>> {
+  await requireAdmin();
   const parsed = doctorSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Enter a doctor name." };
   const v = parsed.data;
@@ -312,6 +320,7 @@ export async function changeAdminPin(
   currentPin: string,
   newPin: string,
 ): Promise<ActionResult<null>> {
+  await requireAdmin();
   const parsed = pinSchema.safeParse(newPin);
   if (!parsed.success) {
     return { ok: false, error: "New PIN must be 4 to 6 digits." };
@@ -344,6 +353,7 @@ export async function changeAdminPin(
 }
 
 export async function addStaff(name: string): Promise<ActionResult<Staff[]>> {
+  await requireAdmin();
   const clean = name.trim();
   if (!clean) return { ok: false, error: "Enter a name." };
 

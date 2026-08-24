@@ -1,6 +1,7 @@
 "use server";
 
 import { sql } from "@/lib/db";
+import { requireAdmin } from "@/lib/auth";
 
 export type Kpi = {
   tokens: number;
@@ -37,6 +38,7 @@ export type Analytics = {
  * the context needed to read it — a revenue figure alone says nothing.
  */
 export async function getAnalytics(days = 30): Promise<Analytics> {
+  await requireAdmin();
   const span = Math.min(Math.max(days, 1), 365);
 
   const [
