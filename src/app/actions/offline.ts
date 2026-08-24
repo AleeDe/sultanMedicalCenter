@@ -216,8 +216,42 @@ export async function syncToken(
   }
 }
 
-/** Cheap round-trip used to tell a real outage from a slow page. */
-export async function ping(): Promise<{ ok: true; at: string }> {
-  await sql`select 1`;
-  return { ok: true, at: new Date().toISOString() };
+/**
+ * Is the DATABASE healthy? Reachability is a different question.
+ *
+ * This used to be `ping()`, and the sync engine treated its failure as
+ * "offline". That conflated two faults with opposite remedies: a cut cable,
+ * where the offline path should take over, and a database that is refusing
+ * connections, where it must not — the offline path needs leased numbers it
+ * can only obtain from the server, so pretending to be offline during a
+ * database outage leaves reception unable to issue anything at all.
+ *
+ * Server reachability is now answered by /api/health, which touches nothing.
+ * This reports on the database alone, and resolves rather than throwing so
+ * the caller can tell "the server said the database is down" apart from "the
+ * server never answered".
+ */
+export async function dbHealth(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await sql`select 1`;
+    return { ok: true };
+  } catch (err) {
+    // The message can carry the connection string; log it, never return it.
+    console.error("dbHealth failed", err);
+    const code =
+      typeof err === "object" && err && "code" in err
+        ? String((err as { code: unknown }).code)
+        : "";
+    return {
+      ok: false,
+      // Named causes only, because these three have different fixes and the
+      // person reading the chip is not the person who can fix any of them.
+      error:
+        code === "28P01"
+          ? "The database rejected the server's password."
+          : code === "CONNECT_TIMEOUT" || code === "ETIMEDOUT"
+            ? "The database did not respond."
+            : "The database is unavailable.",
+    };
+  }
 }

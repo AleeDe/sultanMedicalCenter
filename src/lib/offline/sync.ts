@@ -12,7 +12,12 @@ import {
   outboxRemove,
   type OutboxItem,
 } from "./db";
-import { leaseBlock, ping, syncToken, type SyncTokenInput } from "@/app/actions/offline";
+import {
+  dbHealth,
+  leaseBlock,
+  syncToken,
+  type SyncTokenInput,
+} from "@/app/actions/offline";
 
 /*
   The sync engine.
@@ -26,13 +31,34 @@ import { leaseBlock, ping, syncToken, type SyncTokenInput } from "@/app/actions/
   interface, not whether our server answers. A clinic connected to a router
   whose upstream is down reads as "online" and every write fails silently.
   So reachability is confirmed with a real round trip.
+
+  That round trip deliberately does NOT touch the database. An earlier
+  version probed with `select 1`, which meant a database fault — a rotated
+  password, an exhausted pool — reported the clinic as offline. Two things
+  went wrong at once: staff were sent to check a router that was fine, and
+  the app switched to its offline path, which cannot issue anything unless
+  it already holds leased numbers that only the server can grant.
+
+  So there are three states, not two:
+
+    online        server answers, database answers      normal
+    serverOnly    server answers, database does not     wait; do not queue
+    offline       server does not answer                use the leases
+
+  Only the third is a real outage, and only the third should engage the
+  offline path.
 */
 
 export const LEASE_SIZE = 50;
 export const LEASE_LOW = 15;
 
 export type SyncState = {
+  /** Reachable AND the database is usable — the only fully working state. */
   online: boolean;
+  /** Reachable, but the server says its database is down. */
+  serverOnly: boolean;
+  /** What the server said is wrong, when it could say anything at all. */
+  dbError: string | null;
   pending: number;
   remaining: number;
   syncing: boolean;
@@ -43,6 +69,8 @@ export type SyncState = {
 export function useSync(seriesIds: number[]) {
   const [state, setState] = useState<SyncState>({
     online: true,
+    serverOnly: false,
+    dbError: null,
     pending: 0,
     remaining: 0,
     syncing: false,
@@ -83,14 +111,54 @@ export function useSync(seriesIds: number[]) {
     }));
   }, []);
 
-  /** Confirms the server answers, not merely that an interface is up. */
-  const probe = useCallback(async (): Promise<boolean> => {
-    if (typeof navigator !== "undefined" && !navigator.onLine) return false;
+  /**
+   * Asks the two questions separately: can we reach the server, and is its
+   * database usable?
+   *
+   * /api/health touches nothing, so it still answers while the database is
+   * refusing connections — which is exactly the case that used to be
+   * misreported as an outage.
+   */
+  const probe = useCallback(async (): Promise<{
+    reachable: boolean;
+    dbOk: boolean;
+    dbError: string | null;
+  }> => {
+    // A browser that knows it has no interface is believed immediately; the
+    // reverse is never believed without a round trip.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return { reachable: false, dbOk: false, dbError: null };
+    }
+
     try {
-      await ping();
-      return true;
+      const res = await fetch("/api/health", {
+        cache: "no-store",
+        // Bounded, so a captive portal that accepts the connection and then
+        // never replies cannot hold the whole poll open.
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return { reachable: false, dbOk: false, dbError: null };
     } catch {
-      return false;
+      return { reachable: false, dbOk: false, dbError: null };
+    }
+
+    // Reachable. Now, separately, is the database usable?
+    try {
+      const health = await dbHealth();
+      return {
+        reachable: true,
+        dbOk: health.ok,
+        dbError: health.ok ? null : (health.error ?? "The database is unavailable."),
+      };
+    } catch {
+      // The server answered /api/health but not this. Treat the database as
+      // down rather than the network, because we have just proven the
+      // network works.
+      return {
+        reachable: true,
+        dbOk: false,
+        dbError: "The database is unavailable.",
+      };
     }
   }, []);
 
@@ -157,11 +225,24 @@ export function useSync(seriesIds: number[]) {
     }
   }, [refresh]);
 
-  /** One pass: check reachability, then top up and drain if reachable. */
+  /** One pass: establish which of the three states we are in, then act. */
   const tick = useCallback(async () => {
-    const online = await probe();
-    setState((s) => ({ ...s, online }));
-    if (!online) return;
+    const { reachable, dbOk, dbError } = await probe();
+
+    setState((s) => ({
+      ...s,
+      online: reachable && dbOk,
+      serverOnly: reachable && !dbOk,
+      dbError,
+    }));
+
+    /*
+      Leasing and draining both need the database, so neither is attempted
+      unless it is actually up. Retrying them against a database that has
+      just said it is down only produces noise in the log.
+    */
+    if (!reachable || !dbOk) return;
+
     await topUp();
     await drain();
   }, [probe, topUp, drain]);

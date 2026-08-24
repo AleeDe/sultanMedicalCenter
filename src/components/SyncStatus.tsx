@@ -16,6 +16,27 @@ import { IconCheck, IconCross } from "@/components/icons";
 export function SyncStatus({ seriesIds }: { seriesIds: number[] }) {
   const s = useSync(seriesIds);
 
+  /*
+    Reachable, but the server cannot use its database.
+
+    Ranked above the offline states deliberately: this is NOT an outage
+    reception can work through. Issuing is impossible either way, and the
+    offline path would not help — it needs numbers only the server can lease.
+    Saying "Offline" here would send someone to check a router that is fine,
+    which is what this chip used to do.
+  */
+  if (s.serverOnly) {
+    return (
+      <Chip
+        tone="danger"
+        title={`${s.dbError ?? "The database is unavailable."} Your internet is working — this is a problem on the server, and reception cannot fix it from here.`}
+      >
+        <IconCross className="h-3.5 w-3.5" />
+        Server problem
+      </Chip>
+    );
+  }
+
   // Order matters: the worst state wins the chip.
   if (!s.online && s.remaining === 0) {
     return (
