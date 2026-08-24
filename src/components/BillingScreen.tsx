@@ -407,7 +407,7 @@ function AddItemPanel({
                   className={`h-9 rounded-full px-3.5 text-[13px] font-semibold
                     transition-colors ${
                       tab === c
-                        ? "bg-[var(--accent)] text-white"
+                        ? "bg-[var(--accent)] text-[var(--accent-ink)]"
                         : "bg-sunken text-muted hover:text-[var(--ink-2)]"
                     }`}
                   style={{ minHeight: 36 }}

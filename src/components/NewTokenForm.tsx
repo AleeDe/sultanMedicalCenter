@@ -821,7 +821,7 @@ function LabPicker({
                     className={`h-9 rounded-full px-3.5 text-[13px] font-semibold transition-colors ${
                       tab === c
                         ? "bg-[var(--accent)] text-white"
-                        : "bg-sunken text-[var(--ink-2)] hover:bg-white hover:text-[var(--accent)] hover:shadow-[var(--shadow)]"
+                        : "bg-sunken text-[var(--ink-2)] hover:bg-[var(--surface)] hover:text-[var(--accent)] hover:shadow-[var(--shadow)]"
                     }`}
                     style={{ minHeight: 36 }}
                   >

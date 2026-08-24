@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getQueues, type DoctorQueue } from "@/app/actions/queue";
+import {
+  AnnouncementOverlay,
+  SoundGate,
+  type Called,
+} from "@/components/NowServing";
 
 /*
   The waiting-room TV.
@@ -19,6 +24,13 @@ import { getQueues, type DoctorQueue } from "@/app/actions/queue";
    * Never show stale numbers as if live. If the data stops arriving the
      board must say it is reconnecting rather than confidently displaying a
      "now serving" that moved on ten minutes ago.
+
+   * Call the turn out loud. A patient who has looked away misses a purely
+     visual change entirely — which is why every bank counter chimes. See
+     NowServing.tsx for the chime/voice policy.
+
+  This screen is always dark regardless of the device theme: it hangs in a
+  dim waiting area, where a white 55" panel is glare rather than information.
 */
 
 const REFRESH_MS = 5_000;
@@ -27,9 +39,12 @@ const STALE_MS = 30_000;
 export function DisplayBoard({
   initial,
   clinicName,
+  speechLang = "ur-PK",
 }: {
   initial: DoctorQueue[];
   clinicName: string;
+  /** Voice used for the spoken call, when one is installed on the machine. */
+  speechLang?: string;
 }) {
   const [queues, setQueues] = useState(initial);
   const [lastOk, setLastOk] = useState(() => Date.now());
@@ -38,7 +53,14 @@ export function DisplayBoard({
   // Holds the current time, refreshed once a second. Reading Date.now()
   // during render is impure — the same render would produce a different
   // result each time — so the clock lives in state instead.
-  const [now, setNow] = useState(() => Date.now());
+  /*
+    Null until the first client tick. The clock cannot be server-rendered:
+    the server formats one second and the browser hydrates on another, and
+    React treats that as a genuine mismatch — which then drowns out the real
+    ones in the console. Rendering nothing for one tick is invisible on a
+    board that repaints every second anyway.
+  */
+  const [now, setNow] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -52,29 +74,73 @@ export function DisplayBoard({
   }, []);
 
   useEffect(() => {
+    // On the next tick rather than synchronously, so the clock is not blank
+    // for a whole second while still leaving the server render clock-free.
+    const first = setTimeout(() => setNow(Date.now()), 0);
     const poll = setInterval(() => void refresh(), REFRESH_MS);
     const watch = setInterval(() => setNow(Date.now()), 1000);
     return () => {
+      clearTimeout(first);
       clearInterval(poll);
       clearInterval(watch);
     };
   }, [refresh]);
 
   // Both derived from `now`, so a render is deterministic.
-  const stale = now - lastOk > STALE_MS;
-  const clock = new Date(now).toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  const stale = now !== null && now - lastOk > STALE_MS;
+  const clock =
+    now === null
+      ? null
+      : new Date(now).toLocaleTimeString("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
 
   const active = queues.filter((q) => q.state !== "FINISHED");
 
+  /*
+    Who to announce.
+
+    The first CALLED patient across every doctor — called, not in
+    consultation: the announcement is what gets them out of their seat, so it
+    must fire when they are summoned, not when they arrive.
+
+    The key includes recall_count so that re-calling the same patient (they
+    did not hear it the first time) announces again, while the five-second
+    poll re-rendering the same state does not.
+  */
+  const called: Called | null = latestCalled(active);
+
   return (
-    <div className="flex min-h-screen flex-col bg-[#0b1524] p-6 text-white">
-      <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
-        <h1 className="text-3xl font-bold tracking-tight">{clinicName}</h1>
+    <div
+      // Forced dark: this is a wall panel in a dim room, never the counter.
+      data-theme="dark"
+      className="relative flex min-h-screen flex-col overflow-hidden bg-[#070d16] p-6 text-white"
+    >
+      {/*
+        Two soft colour washes behind the content. Purely atmospheric, and
+        deliberately at very low opacity — anything stronger would compete
+        with the token numbers, which are the only thing on this screen that
+        anyone actually needs to read.
+      */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-40 -top-40 h-[36rem] w-[36rem] rounded-full
+          bg-[var(--accent)] opacity-[0.13] blur-[130px]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-52 -right-40 h-[34rem] w-[34rem] rounded-full
+          bg-[#3ddc97] opacity-[0.08] blur-[130px]"
+      />
+
+      <AnnouncementOverlay called={called} speechLang={speechLang} />
+
+      <header className="relative mb-7 flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-4xl font-black tracking-tight">{clinicName}</h1>
         <div className="flex items-center gap-4">
+          <SoundGate speechLang={speechLang} />
           {stale && (
             // Saying so is the honest move: a board confidently showing a
             // number that moved on ten minutes ago is worse than a blank one.
@@ -82,9 +148,11 @@ export function DisplayBoard({
               Reconnecting…
             </span>
           )}
-          <span className="tnum text-2xl font-semibold text-white/70">
-            {clock}
-          </span>
+          {clock && (
+            <span className="tnum rounded-2xl bg-white/[0.07] px-4 py-1.5 text-2xl font-bold text-white/75">
+              {clock}
+            </span>
+          )}
         </div>
       </header>
 
@@ -95,7 +163,7 @@ export function DisplayBoard({
         on a 55" screen should be big, not letterboxed beside empty space.
       */}
       <div
-        className={`grid flex-1 auto-rows-fr gap-5 transition-opacity ${
+        className={`relative grid flex-1 auto-rows-fr gap-5 transition-opacity ${
           stale ? "opacity-40" : ""
         } ${
           active.length >= 5
@@ -115,16 +183,61 @@ export function DisplayBoard({
       </div>
 
       {active.length === 0 && (
-        <p className="mt-20 text-center text-3xl text-white/50">
+        <p className="relative mt-20 text-center text-3xl text-white/50">
           No clinics running right now
         </p>
       )}
 
-      <p className="mt-8 text-center text-sm text-white/30">
-        Updated {new Date(lastOk).toLocaleTimeString("en-GB", { hour12: true })}
+      {/* Client-only for the same reason as the clock above. */}
+      <p className="relative mt-8 text-center text-sm text-white/25">
+        {now === null
+          ? " "
+          : `Updated ${new Date(lastOk).toLocaleTimeString("en-GB", { hour12: true })}`}
       </p>
     </div>
   );
+}
+
+/**
+ * The patient who was most recently summoned, across every doctor.
+ *
+ * Deliberately the LATEST by called_at rather than the first row of
+ * `called`. More than one token can sit in CALLED at once — call_next()
+ * does not require the previous patient to have been started — and that
+ * list is ordered by queue position, so its first element is the OLDEST
+ * outstanding call. Announcing that one would replay a call from minutes
+ * ago and, because the row never changes, would then go silent for every
+ * subsequent patient.
+ *
+ * A plain function rather than a memo: `active` is rebuilt on every render
+ * anyway, so a dependency on it could never hit the cache. What actually
+ * prevents re-announcing is the stable `key`, which the overlay compares.
+ */
+function latestCalled(active: DoctorQueue[]): Called | null {
+  let best: Called | null = null;
+  let bestAt = -Infinity;
+
+  for (const q of active) {
+    for (const c of q.called) {
+      // A row with no called_at should never win over a timestamped one,
+      // but must still be announceable when it is all there is.
+      const at = c.called_at ? Date.parse(c.called_at) : 0;
+      if (at < bestAt) continue;
+      bestAt = at;
+      best = {
+        // recall_count is part of the identity so that re-calling the same
+        // patient (they did not hear it) announces again, while the
+        // five-second poll re-rendering the same state does not.
+        key: `${c.token_id}:${c.recall_count}`,
+        calledAt: at || Date.now(),
+        displayNo: c.display_no,
+        patientName: c.patient_name,
+        room: q.room || null,
+        doctorName: q.doctorName,
+      };
+    }
+  }
+  return best;
 }
 
 function Column({ q }: { q: DoctorQueue }) {
@@ -134,11 +247,14 @@ function Column({ q }: { q: DoctorQueue }) {
   const emergencyFirst = q.waiting[0]?.is_emergency || q.called[0]?.is_emergency;
 
   return (
-    <section className="rounded-2xl bg-white/[0.06] p-5">
-      <div className="mb-4 flex items-baseline justify-between gap-2">
-        <h2 className="truncate text-xl font-bold">{q.doctorName}</h2>
+    <section
+      className="flex flex-col rounded-[26px] border border-white/10
+        bg-gradient-to-b from-white/[0.09] to-white/[0.03] p-6 shadow-xl backdrop-blur-sm"
+    >
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 className="truncate text-2xl font-bold">{q.doctorName}</h2>
         {q.room && (
-          <span className="shrink-0 rounded-lg bg-white/10 px-3 py-1 text-lg font-bold">
+          <span className="shrink-0 rounded-xl bg-[var(--accent)] px-4 py-1.5 text-lg font-black">
             {q.room}
           </span>
         )}
@@ -147,7 +263,7 @@ function Column({ q }: { q: DoctorQueue }) {
       {/* Why the queue is not moving, said plainly. An unexplained wait feels
           far longer than an explained one. */}
       {q.state === "ON_BREAK" && (
-        <p className="mb-4 rounded-xl bg-amber-500/20 px-4 py-3 text-lg font-semibold text-amber-200">
+        <p className="mb-4 rounded-2xl bg-amber-500/20 px-4 py-3 text-lg font-semibold text-amber-200">
           Doctor on a short break
           {q.expectedReturnAt && (
             <>
@@ -163,17 +279,25 @@ function Column({ q }: { q: DoctorQueue }) {
       )}
 
       {emergencyFirst && (
-        <p className="mb-4 rounded-xl bg-red-500/20 px-4 py-3 text-lg font-semibold text-red-200">
+        <p className="mb-4 rounded-2xl bg-red-500/20 px-4 py-3 text-lg font-semibold text-red-200">
           Emergency case being seen — normal queue resumes shortly
         </p>
       )}
 
-      <p className="text-sm uppercase tracking-[0.2em] text-white/50">
+      <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/45">
         Now serving
       </p>
       <p className="tnum my-1 leading-none">
         <BigToken value={now?.display_no ?? next?.display_no ?? null} />
       </p>
+
+      {/* The name under the number: this is what a patient who mis-hears the
+          digits uses to be certain it is them. */}
+      {(now ?? next) && (
+        <p className="mt-2 truncate text-2xl font-semibold text-white/75">
+          {now?.patient_name ?? next?.patient_name}
+        </p>
+      )}
 
       {next && now && (
         <p className="mt-4 text-lg text-white/70">

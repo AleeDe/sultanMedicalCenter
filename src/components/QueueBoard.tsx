@@ -229,39 +229,80 @@ function DoctorPanel({
             {q.called.map((r) => (
               <li
                 key={r.token_id}
-                className="flex flex-wrap items-center gap-2.5 rounded-[var(--r-sm)] border border-[var(--line)] p-2.5"
+                className="rounded-[var(--r-sm)] border border-[var(--line)] p-2.5"
               >
-                <TokenChip row={r} />
-                <span className="min-w-0 flex-1 truncate font-medium">
-                  {r.patient_name}
-                </span>
-                <Button
-                  variant="primary"
-                  disabled={pending}
-                  onClick={() => onStart(r.token_id)}
-                >
-                  Start
-                </Button>
-                <Button
-                  variant="danger"
-                  disabled={pending}
-                  onClick={() => onSkip(r.token_id)}
-                  title="Patient did not appear — they can be recalled"
-                >
-                  Not here
-                </Button>
+                <div className="flex items-center gap-2.5">
+                  <TokenChip row={r} />
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {r.patient_name}
+                  </span>
+                </div>
+                {/* Buttons drop to their own row on a phone so neither is
+                    squeezed below a comfortable target width. */}
+                <div className="mt-2 flex gap-2 sm:mt-0 sm:hidden">
+                  <Button
+                    variant="primary"
+                    className="flex-1"
+                    disabled={pending}
+                    onClick={() => onStart(r.token_id)}
+                  >
+                    Start
+                  </Button>
+                  <Button
+                    variant="danger"
+                    className="flex-1"
+                    disabled={pending}
+                    onClick={() => onSkip(r.token_id)}
+                    title="Patient did not appear — they can be recalled"
+                  >
+                    Not here
+                  </Button>
+                </div>
+                <div className="hidden sm:mt-2 sm:flex sm:justify-end sm:gap-2">
+                  <Button
+                    variant="primary"
+                    disabled={pending}
+                    onClick={() => onStart(r.token_id)}
+                  >
+                    Start
+                  </Button>
+                  <Button
+                    variant="danger"
+                    disabled={pending}
+                    onClick={() => onSkip(r.token_id)}
+                    title="Patient did not appear — they can be recalled"
+                  >
+                    Not here
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      {/* The primary action */}
-      <div className="border-b border-[var(--line)] p-4">
+      {/*
+        The primary action.
+
+        On the doctor's phone this sticks to the bottom of the viewport rather
+        than scrolling away with the card. Fitts's Law in its literal form:
+        the target is anchored to the edge the thumb already rests on, so it
+        stays cheap to hit no matter how long the queue below it grows. The
+        desk keeps it inline — a mouse pays no such distance penalty, and a
+        floating bar over a four-doctor grid would be ambiguous about which
+        doctor it belonged to.
+      */}
+      <div
+        className={`border-b border-[var(--line)] p-4 ${
+          compact
+            ? "sticky bottom-0 z-10 border-t bg-[var(--surface)]/95 pb-safe backdrop-blur-md"
+            : ""
+        }`}
+      >
         <Button
           variant="primary"
           size={compact ? "xl" : "lg"}
-          className="w-full"
+          className={`w-full ${compact ? "shadow-[var(--glow)]" : ""}`}
           disabled={pending || nobodyLeft}
           onClick={onCall}
         >

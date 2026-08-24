@@ -55,9 +55,35 @@ const timezone = process.env.CLINIC_TIMEZONE ?? "Asia/Karachi";
 */
 const isTransactionPooler = /:6543/.test(connectionString);
 
+/*
+  A serverless host on the session pooler will fail under any real traffic:
+  every warm instance holds its own pool against a ~15-connection cap, so
+  requests start returning EMAXCONNSESSION as soon as a second instance warms
+  up. It looks fine in one-off testing and breaks the moment two people use
+  it at once.
+
+  This shipped to production once already, so it now fails loudly at startup
+  instead of intermittently under load.
+*/
+if (process.env.VERCEL && !isTransactionPooler) {
+  throw new Error(
+    "DATABASE_URL uses the session pooler (port 5432), which cannot support " +
+      "serverless. Change the port to 6543 in the Vercel environment " +
+      "variables and redeploy. See README, 'Which pooler'.",
+  );
+}
+
 export const sql = postgres(connectionString, {
   max: Number(process.env.DB_POOL_MAX ?? (isTransactionPooler ? 3 : 5)),
-  idle_timeout: 20,
+
+  /*
+    Short idle timeout on serverless. A lambda is frozen between requests
+    rather than shut down, so a long-lived idle connection stays counted
+    against the project's cap by an instance that may never serve another
+    request. Returning it quickly costs little: the pooler keeps the backend
+    warm, so reconnecting is cheap.
+  */
+  idle_timeout: isTransactionPooler ? 5 : 20,
   // Required by transaction pooling; harmless but pointless otherwise.
   prepare: !isTransactionPooler,
   connection: {

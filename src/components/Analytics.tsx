@@ -49,8 +49,8 @@ export function AnalyticsScreen({ initial }: { initial: Data }) {
               disabled={pending}
               className={`h-9 rounded-full px-3.5 text-[13px] font-semibold transition-colors ${
                 data.days === r.days
-                  ? "bg-[var(--accent)] text-white shadow-[var(--shadow)]"
-                  : "bg-sunken text-[var(--ink-2)] hover:bg-white hover:text-[var(--accent)] hover:shadow-[var(--shadow)]"
+                  ? "bg-[var(--accent)] text-[var(--accent-ink)] shadow-[var(--shadow)]"
+                  : "bg-sunken text-[var(--ink-2)] hover:bg-[var(--surface)] hover:text-[var(--accent)] hover:shadow-[var(--shadow)]"
               }`}
               style={{ minHeight: 36 }}
             >

@@ -18,12 +18,12 @@ const VARIANT: Record<NonNullable<BtnProps["variant"]>, string> = {
   primary:
     "bg-[var(--accent)] text-[var(--accent-ink)] border border-transparent shadow-sm hover:brightness-[1.15] hover:shadow-[var(--shadow-lg)] active:brightness-95",
   secondary:
-    "bg-white text-ink border border-[var(--line-strong)] hover:bg-[var(--hover)] hover:border-[var(--hover-line)] hover:shadow-[var(--shadow)] active:bg-[var(--line)]",
+    "bg-[var(--surface)] text-ink border border-[var(--line-strong)] hover:bg-[var(--hover)] hover:border-[var(--hover-line)] hover:shadow-[var(--shadow)] active:bg-[var(--line)]",
   ghost:
     "bg-transparent text-[var(--ink-2)] border border-transparent hover:bg-[var(--hover)] hover:text-[var(--ink)]",
-  ok: "bg-[var(--ok)] text-white border border-transparent shadow-sm hover:brightness-[1.2] hover:shadow-[var(--shadow-lg)] active:brightness-95",
+  ok: "bg-[var(--ok)] text-[var(--accent-ink)] border border-transparent shadow-sm hover:brightness-[1.2] hover:shadow-[var(--shadow-lg)] active:brightness-95",
   danger:
-    "bg-white text-[var(--danger)] border border-[var(--line-strong)] hover:bg-[var(--danger-soft)] hover:border-[var(--danger)] hover:shadow-[var(--shadow)]",
+    "bg-[var(--surface)] text-[var(--danger)] border border-[var(--line-strong)] hover:bg-[var(--danger-soft)] hover:border-[var(--danger)] hover:shadow-[var(--shadow)]",
 };
 
 const SIZE: Record<NonNullable<BtnProps["size"]>, string> = {
@@ -166,8 +166,8 @@ export function Segmented<T extends string | number>({
               ${size === "lg" ? "h-10 text-[15px]" : "h-9 text-sm"}
               ${
                 on
-                  ? "bg-[var(--accent)] text-white shadow-[var(--shadow)]"
-                  : "text-[var(--ink-2)] hover:bg-white hover:text-[var(--accent)] hover:shadow-[var(--shadow)] active:scale-[0.97]"
+                  ? "bg-[var(--accent)] text-[var(--accent-ink)] shadow-[var(--shadow)]"
+                  : "text-[var(--ink-2)] hover:bg-[var(--surface)] hover:text-[var(--accent)] hover:shadow-[var(--shadow)] active:scale-[0.97]"
               }`}
             style={{ minHeight: size === "lg" ? 40 : 36 }}
           >

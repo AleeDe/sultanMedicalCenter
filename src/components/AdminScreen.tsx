@@ -83,8 +83,8 @@ export function AdminScreen({
             aria-pressed={tab === t.id}
             className={`h-10 rounded-full px-4 text-sm font-semibold transition-colors ${
               tab === t.id
-                ? "bg-[var(--accent)] text-white shadow-[var(--shadow)]"
-                : "bg-sunken text-[var(--ink-2)] hover:bg-white hover:text-[var(--accent)] hover:shadow-[var(--shadow)]"
+                ? "bg-[var(--accent)] text-[var(--accent-ink)] shadow-[var(--shadow)]"
+                : "bg-sunken text-[var(--ink-2)] hover:bg-[var(--surface)] hover:text-[var(--accent)] hover:shadow-[var(--shadow)]"
             }`}
             style={{ minHeight: 40 }}
           >
@@ -728,7 +728,7 @@ function ClinicTab({
                 onClick={() => setPaper(w)}
                 className={`h-10 rounded-[6px] text-sm font-semibold transition-all ${
                   paper === w
-                    ? "bg-white text-[var(--accent)] shadow-[var(--shadow)]"
+                    ? "bg-[var(--surface)] text-[var(--accent)] shadow-[var(--shadow)]"
                     : "text-muted"
                 }`}
                 style={{ minHeight: 40 }}

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Nav } from "@/components/Nav";
 import { RegisterSW } from "@/components/RegisterSW";
+import { ThemeScript } from "@/components/ThemeToggle";
 import { getSeries } from "@/app/actions/tokens";
 import "./globals.css";
 
@@ -32,7 +33,12 @@ export default async function RootLayout({
   const series = await getSeries().catch(() => []);
 
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
+      <head>
+        {/* Sets data-theme before first paint, so a dark device never
+            flashes white on load. */}
+        <ThemeScript />
+      </head>
       <body className="flex min-h-full flex-col">
         <RegisterSW />
         <Nav seriesIds={series.map((s) => s.id)} />

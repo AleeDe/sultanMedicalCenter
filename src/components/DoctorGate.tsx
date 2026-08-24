@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { checkDoctorPin } from "@/app/actions/queue";
-import { Alert, Button, Card } from "@/components/ui";
+import { Alert, Button, Card, DoctorAvatar } from "@/components/ui";
 import { IconLock, IconStethoscope } from "@/components/icons";
 import type { Doctor } from "@/lib/types";
 
@@ -93,9 +93,10 @@ export function DoctorGate({
   if (signedIn) {
     return (
       <>
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-2 px-5 pt-4">
-          <p className="text-sm text-muted">
-            Signed in as <strong>{signedIn.name}</strong>
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-2 px-4 pt-4 sm:px-5">
+          <p className="flex items-center gap-2 text-sm text-muted">
+            <span className="h-2 w-2 rounded-full bg-[var(--ok)]" aria-hidden />
+            Signed in as <strong className="text-[var(--ink)]">{signedIn.name}</strong>
           </p>
           <Button onClick={signOut} className="h-9 px-3 text-xs" style={{ minHeight: 36 }}>
             Sign out
@@ -115,15 +116,17 @@ export function DoctorGate({
   }
 
   return (
-    <div className="mx-auto max-w-md px-5 py-12">
-      <Card className="p-6">
+    <div className="mx-auto max-w-md px-4 py-8 sm:px-5 sm:py-12">
+      <Card className="p-5 sm:p-6">
         <span
-          className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-sunken text-muted"
+          className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl
+            bg-gradient-to-br from-[var(--accent-2)] to-[var(--accent)] text-white
+            shadow-[var(--glow)]"
           aria-hidden
         >
-          <IconStethoscope className="h-7 w-7" />
+          <IconStethoscope className="h-8 w-8" />
         </span>
-        <h1 className="text-center text-lg font-bold">Doctor sign in</h1>
+        <h1 className="text-center text-xl font-bold">Doctor sign in</h1>
         <p className="mt-1 text-center text-sm text-muted">
           Open your queue and start seeing patients.
         </p>
@@ -138,13 +141,18 @@ export function DoctorGate({
                 setPicked(d.id);
                 setError(null);
               }}
-              className={`flex items-center gap-3 rounded-[var(--r)] border-2 p-3 text-left
-                transition-all ${
+              className={`flex items-center gap-3 rounded-[var(--r)] border-2 p-3.5 text-left
+                transition-all active:scale-[0.99] ${
                   picked === d.id
-                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)] shadow-[var(--shadow)]"
                     : "border-[var(--line)] hover:border-[var(--hover-line)] hover:bg-[var(--hover)]"
                 }`}
             >
+              <DoctorAvatar
+                name={d.name}
+                tone={picked === d.id ? "accent" : "soft"}
+                className="h-11 w-11 text-sm"
+              />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-bold">{d.name}</span>
                 <span className="block truncate text-xs text-muted">
@@ -169,7 +177,7 @@ export function DoctorGate({
               placeholder="••••"
               onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
               onKeyDown={(e) => e.key === "Enter" && pin.length >= 4 && submit()}
-              className="tnum mx-auto mt-5 h-14 max-w-[220px] text-center text-2xl font-bold tracking-[0.4em]"
+              className="tnum mx-auto mt-5 h-16 max-w-[240px] text-center text-3xl font-bold tracking-[0.4em]"
             />
 
             {error && (

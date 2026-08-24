@@ -3,16 +3,28 @@
 /*
   Front-desk software for a bright room, used under time pressure.
 
-  Light-only by design: a receptionist reading a token number aloud should not
-  be fighting a dark theme, and thermal receipts are black-on-white regardless.
+  THEMING. This was light-only by design, for a good reason: a receptionist
+  reading a token number aloud at a lit counter should not be fighting a dark
+  theme. That reason still holds for the counter, so it is preserved as the
+  DEFAULT — light is what an unconfigured machine gets.
 
-  The palette carries meaning rather than decoration — the whole screen takes
-  on the colour of the visit type, so "am I issuing an emergency token?" is
-  answerable from across the room without reading a single word.
+  What changed is that the app now runs on surfaces the original rule never
+  covered: a doctor's tablet held close in a consulting room, and a
+  wall-mounted TV in a dim waiting area. Both are better dark. So the theme
+  is opt-in per device (stored locally, never global): reception stays
+  light, the display board is always dark, and the doctor chooses.
+
+  Because every colour below is a token, "dark" is a re-declaration of the
+  same names — no component needs to know which theme it is in, and the
+  emergency recolouring keeps working in both.
 */
 :root {
+  color-scheme: light;
+
   --bg: #eef2f6;
+  --bg-tint: #ffffff;
   --surface: #ffffff;
+  --surface-2: #ffffff;
   --surface-sunken: #f1f5f9;
   --ink: #0b1524;
   --ink-2: #33415c;
@@ -31,6 +43,7 @@
 
   /* Accent — recoloured per visit type by [data-mode] below. */
   --accent: #0b5fa5;
+  --accent-2: #1584d8;
   --accent-ink: #ffffff;
   --accent-soft: #e8f1fa;
   --accent-line: #9cc3e6;
@@ -45,6 +58,7 @@
   --r-sm: 8px;
   --r: 12px;
   --r-lg: 16px;
+  --r-xl: 22px;
 
   /*
     Elevation is a three-step ladder, not a free parameter. Every raised
@@ -55,6 +69,8 @@
   --shadow: 0 1px 2px rgb(11 21 36 / 0.06), 0 1px 3px rgb(11 21 36 / 0.04);
   --shadow-md: 0 2px 4px -1px rgb(11 21 36 / 0.08), 0 4px 12px -2px rgb(11 21 36 / 0.08);
   --shadow-lg: 0 10px 24px -8px rgb(11 21 36 / 0.16);
+  /* Focus/accent glow, used for the one primary action on a screen. */
+  --glow: 0 6px 20px -6px color-mix(in srgb, var(--accent) 55%, transparent);
 
   /*
     Type scale. Three levels of hierarchy is the working limit for a screen
@@ -96,6 +112,64 @@
   --dur: 0.2s;
 }
 
+/*
+  Dark. A re-declaration of the same tokens, so no component changes.
+
+  Not a mechanical inversion: surfaces lift toward the viewer with LIGHTNESS
+  rather than shadow (a shadow on a dark ground is invisible), and the accent
+  is brightened because the same blue that reads as confident on white
+  disappears against near-black. Ink never goes pure white — #f2f6fc at these
+  sizes avoids the halation that makes long shifts tiring.
+*/
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #070d16;
+  --bg-tint: #0d1826;
+  --surface: #101c2c;
+  --surface-2: #162437;
+  --surface-sunken: #0b1421;
+  --ink: #f2f6fc;
+  --ink-2: #c2cfe0;
+  --muted: #8496ad;
+  --line: #23324a;
+  --line-strong: #35496a;
+
+  --hover: #1c2c42;
+  --hover-line: #4a7fb5;
+
+  --accent: #3d9bf0;
+  --accent-2: #6cb8ff;
+  --accent-ink: #04121f;
+  --accent-soft: #12293f;
+  --accent-line: #2f5f8c;
+
+  --ok: #3ddc97;
+  --ok-soft: #0d2a20;
+  --danger: #ff6b5e;
+  --danger-soft: #2c1210;
+  --gold: #f0b64a;
+  --gold-soft: #2b1f0c;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 16px 40px -12px rgb(0 0 0 / 0.75);
+}
+
+[data-theme="dark"] .surface-2,
+[data-theme="dark"] [data-elevated] {
+  background: #162437;
+}
+
+/* Emergency repaints the accent everywhere it is used, in BOTH themes. */
+[data-theme="dark"][data-mode="emergency"],
+[data-theme="dark"] [data-mode="emergency"] {
+  --accent: #ff6b5e;
+  --accent-ink: #2c0d0a;
+  --accent-soft: #2c1210;
+  --accent-line: #7d3129;
+}
+
 /* Emergency repaints the accent everywhere it is used. */
 [data-mode="emergency"] {
   --accent: #b42318;
@@ -105,6 +179,9 @@
 
 @theme inline {
   --color-bg: var(--bg);
+  --color-bg-tint: var(--bg-tint);
+  --color-surface-2: var(--surface-2);
+  --color-accent-2: var(--accent-2);
   --color-surface: var(--surface);
   --color-sunken: var(--surface-sunken);
   --color-ink: var(--ink);
@@ -126,6 +203,7 @@
   --color-hover-line: var(--hover-line);
   --radius-card: var(--r);
   --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
 
   --text-display: var(--t-display);
   --text-title: var(--t-title);
@@ -275,6 +353,67 @@ kbd {
     animation: none;
   }
 }
+
+/*
+  Motion used by the announcement and the queue.
+
+  Everything here is short and interruption-safe: the board repaints every
+  five seconds, so an animation that outlives its data is worse than none.
+*/
+@keyframes ring {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+  70%  { transform: scale(1.02); box-shadow: 0 0 0 26px transparent; }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 transparent; }
+}
+
+@keyframes sweep {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* The called-token card, which must pull an eye from across the room. */
+.animate-ring { animation: ring 1.6s var(--ease) 3; }
+.animate-fade { animation: fade-in 0.3s ease-out both; }
+
+/*
+  Shimmer for the "now serving" number. Kept to the token digits only —
+  a moving background behind body text is a legibility cost with no payoff.
+*/
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    var(--ink) 40%,
+    var(--accent-2) 50%,
+    var(--ink) 60%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: sweep 3.5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ring,
+  .animate-fade,
+  .shimmer {
+    animation: none;
+  }
+  .shimmer { color: var(--ink); }
+}
+
+/*
+  Safe-area padding for the doctor's phone: a fixed action bar at the bottom
+  of an iPhone otherwise sits under the home indicator, which is exactly
+  where the primary button goes.
+*/
+.pb-safe { padding-bottom: max(var(--s-4), env(safe-area-inset-bottom)); }
+
 
 /*
   The print slip lives in the DOM at all times (so it is ready the instant

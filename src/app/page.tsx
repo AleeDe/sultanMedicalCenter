@@ -1,4 +1,5 @@
 import { NewTokenForm } from "@/components/NewTokenForm";
+import { RoleLauncher } from "@/components/RoleLauncher";
 import {
   getClinic,
   getDoctors,
@@ -19,12 +20,19 @@ export default async function NewTokenPage() {
   ]);
 
   return (
-    <NewTokenForm
-      series={series}
-      clinic={clinic}
-      staff={staff}
-      services={services}
-      doctors={doctors}
-    />
+    <>
+      <NewTokenForm
+        series={series}
+        clinic={clinic}
+        staff={staff}
+        services={services}
+        doctors={doctors}
+      />
+      {/* The doctor console and waiting-room board, which were previously
+          reachable only by typing their URL. */}
+      <div className="mx-auto max-w-6xl px-5 pb-8">
+        <RoleLauncher />
+      </div>
+    </>
   );
 }
