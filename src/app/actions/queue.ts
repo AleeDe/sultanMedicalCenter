@@ -53,92 +53,49 @@ export type DoctorQueue = {
   seenToday: number;
 };
 
-/** Everything the queue screens need, for one doctor or all of them. */
+/*
+  Everything the queue screens need, for one doctor or all of them.
+
+  One database round trip (TG-07). This used to run five queries per doctor —
+  ~20 for a four-doctor board — and both /queue and every doctor tab re-poll
+  it every ten seconds; against the pooler in Mumbai that was ~350ms warm and
+  ~2.2s cold, almost all of it network latency times the fan-out. all_queues
+  does the same work set-based in the database and returns one JSON payload,
+  measured at ~65ms.
+*/
+type AllQueuesRow = {
+  id: number;
+  name: string;
+  room: string;
+  speciality: string;
+  state: string;
+  expected_return_at: string | null;
+  typical_minutes: number;
+  current: DoctorQueue["current"];
+  queue_rows: QueueRow[];
+  skipped: QueueRow[];
+  seen_today: number;
+};
+
 export async function getQueues(doctorId?: number): Promise<DoctorQueue[]> {
-  const doctors = await sql<
-    {
-      id: number;
-      name: string;
-      room: string;
-      speciality: string;
-      state: string;
-      expected_return_at: string | null;
-    }[]
-  >`
-    select d.id, d.name, d.room, d.speciality,
-           coalesce(s.state, 'AVAILABLE') as state,
-           s.expected_return_at
-      from doctor d
-      left join doctor_session s on s.doctor_id = d.id
-     where d.active ${doctorId ? sql`and d.id = ${doctorId}` : sql``}
-     order by d.sort_order, d.name
+  const [{ q }] = await sql<{ q: AllQueuesRow[] }[]>`
+    select all_queues(${doctorId ?? null}) as q
   `;
 
-  return Promise.all(
-    doctors.map(async (d) => {
-      const [rows, current, skipped, typical, seen] = await Promise.all([
-        sql<QueueRow[]>`select * from queue_with_eta(${d.id})`,
-        sql<
-          {
-            token_id: number;
-            display_no: string;
-            patient_name: string;
-            started_at: string | null;
-            status: string;
-          }[]
-        >`
-          select t.id as token_id, t.display_no, p.name as patient_name,
-                 t.started_at, t.status
-            from token t
-            join visit v on v.id = t.visit_id
-            join patient p on p.id = v.patient_id
-           where t.doctor_id = ${d.id}
-             and t.token_date = current_date
-             and t.status = 'IN_CONSULTATION'
-           order by t.started_at desc
-           limit 1
-        `,
-        sql<QueueRow[]>`
-          select t.id as token_id, t.display_no, p.name as patient_name,
-                 t.seq, t.status, t.priority, 0 as queue_pos, 0 as eta_minutes,
-                 ts.is_emergency, t.recall_count, t.called_at
-            from token t
-            join visit v on v.id = t.visit_id
-            join patient p on p.id = v.patient_id
-            join token_series ts on ts.id = t.series_id
-           where t.doctor_id = ${d.id}
-             and t.token_date = current_date
-             and t.status in ('SKIPPED','NO_SHOW')
-           order by t.seq
-        `,
-        sql<{ typical_consult_seconds: number }[]>`
-          select typical_consult_seconds(${d.id})
-        `,
-        sql<{ count: number }[]>`
-          select count(*)::int as count from token
-           where doctor_id = ${d.id} and token_date = current_date
-             and status = 'DONE'
-        `,
-      ]);
-
-      return {
-        doctorId: d.id,
-        doctorName: d.name,
-        room: d.room,
-        speciality: d.speciality,
-        state: d.state as DoctorQueue["state"],
-        expectedReturnAt: d.expected_return_at,
-        typicalMinutes: Math.round(
-          (typical[0]?.typical_consult_seconds ?? 300) / 60,
-        ),
-        current: current[0] ?? null,
-        waiting: rows.filter((r) => r.status === "WAITING"),
-        called: rows.filter((r) => r.status === "CALLED"),
-        skipped,
-        seenToday: seen[0]?.count ?? 0,
-      };
-    }),
-  );
+  return q.map((d) => ({
+    doctorId: d.id,
+    doctorName: d.name,
+    room: d.room,
+    speciality: d.speciality,
+    state: d.state as DoctorQueue["state"],
+    expectedReturnAt: d.expected_return_at,
+    typicalMinutes: d.typical_minutes,
+    current: d.current ?? null,
+    waiting: d.queue_rows.filter((r) => r.status === "WAITING"),
+    called: d.queue_rows.filter((r) => r.status === "CALLED"),
+    skipped: d.skipped,
+    seenToday: d.seen_today,
+  }));
 }
 
 const idSchema = z.coerce.number().int().positive();

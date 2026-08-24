@@ -53,6 +53,28 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+
+  /*
+    Server Action origin allowlist (TG-06).
+
+    Next already rejects a Server Action whose Origin does not match the Host,
+    which is its built-in CSRF defence. This pins the set of hosts explicitly
+    so a misconfigured proxy or an added preview domain cannot silently widen
+    it. It works together with the SameSite=Strict session cookie: the cookie
+    stops a cross-site request from carrying the session, and this stops one
+    from invoking an action at all.
+
+    Add real deployment hosts here (the clinic's domain, the Vercel project
+    URL). Localhost covers development.
+  */
+  experimental: {
+    serverActions: {
+      allowedOrigins: [
+        "localhost:3000",
+        "sultan-medical-center.vercel.app",
+      ],
+    },
+  },
 };
 
 export default nextConfig;
