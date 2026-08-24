@@ -18,13 +18,14 @@
 */
 
 /*
-  Bumped to v2 to evict caches poisoned by the bug fixed below: error
+  Bumped again (v3) so browsers pick up the RSC fix below. v2 evicted
+  caches poisoned by an earlier bug: error
   responses were stored as the offline shell, so browsers that loaded the
   site during a database outage kept serving that error back. Changing the
   version makes the activate handler drop the old caches outright, which is
   the only way to clear a bad entry from a browser we cannot reach.
 */
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
@@ -84,6 +85,26 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  /*
+    Next's client-side navigation data. Left entirely alone.
+
+    Clicking a link does not make a `navigate` request — Next fetches the
+    route's React payload from the same URL with an `_rsc` query parameter
+    and a `mode` of "cors". That fell through to the navigation branch below,
+    which on failure serves cached HTML. Next then received an HTML document
+    where it expected an RSC payload, could not parse it, and the navigation
+    silently did nothing: the first page loaded fine and every link after it
+    appeared dead.
+
+    These are data requests, not documents. They are not useful offline —
+    the pages they drive are all server-rendered from the database — so the
+    correct handling is none at all, letting the network answer or fail
+    honestly so Next can fall back to a full page load.
+  */
+  if (url.searchParams.has("_rsc") || request.headers.get("RSC") === "1") {
+    return;
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
@@ -105,8 +126,15 @@ self.addEventListener("fetch", (event) => {
           return res;
         })
         .catch(async () => {
+          /*
+            Match on the pathname only. A navigation to /queue must not be
+            answered from an entry stored under /queue?something, and the
+            fallback to "/" is a last resort for a page never visited — it
+            is the app shell, which is a reasonable thing to show offline.
+          */
           const cached =
-            (await caches.match(request)) ?? (await caches.match("/"));
+            (await caches.match(request, { ignoreSearch: true })) ??
+            (await caches.match("/"));
           if (cached) return cached;
           return new Response(
             "<!doctype html><meta charset=utf-8>" +
