@@ -11,11 +11,34 @@ actual artwork the printer receives.
 |---|---|
 | Title card | clinic name, pushed in slowly, cross-fading to the app |
 | Walkthrough | the real app, with a synthetic cursor and a slow drift |
+| Parallel screens | reception, the waiting-room board and the doctor's tablet in one frame, all live |
 | End card | "Tayyar hai", fading up from the last frame |
 | Voice | female Pakistani Urdu, Nastaliq script |
 | Music | generated ambient bed, ducked under the narration |
 | Subtitles | Roman Urdu, burned in |
 | Master | −14 LUFS / −2.8 dBTP, the standard for online video |
+
+## The three screens shown at once
+
+Roughly half the video runs on `demo/wall.html`: reception, the waiting-room
+board and the doctor's tablet side by side, each a real iframe onto the
+running app.
+
+That page exists because the central claim cannot be told, only shown — a
+token issued at the counter reaches the board and the doctor's room on its
+own, and the only honest way to demonstrate it is to leave all three visible
+and film what happens. Nothing there is mocked or replayed.
+
+Two details in it are load-bearing:
+
+- **Each pane renders at a real desktop size and is then scaled.** Loading a
+  page into a narrow frame would trigger the app's own mobile layout, which
+  is correct behaviour and the wrong thing to film when the subject is a
+  counter monitor and a wall-mounted TV.
+- **In-frame clicks use `dispatchEvent`, not `click()`.** The panes are
+  CSS-scaled, and a scaled iframe puts Playwright's hit-testing at odds with
+  where the element actually is: the locator resolves, then the click lands
+  on whatever sits at those coordinates in the parent document.
 
 ## One-time setup
 

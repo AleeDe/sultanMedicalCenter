@@ -1,56 +1,104 @@
 [
   {
     "id": "01",
-    "roman": "Yeh hai aap ke clinic ka Token aur Billing system. Reception se lekar bill tak, sab kuch ek jagah.",
-    "urdu": "یہ ہے آپ کے کلینک کا ٹوکن اور بلنگ سسٹم۔ ریسیپشن سے لے کر بل تک، سب کچھ ایک جگہ۔",
-    "v3": "[warm] یہ ہے آپ کے کلینک کا ٹوکن اور بلنگ سسٹم۔ ریسیپشن سے لے کر بل تک... سب کچھ ایک ہی جگہ۔"
+    "roman": "Subah ke nau baje. Reception par bees mareez, sab poochh rahe hain — meri baari kab aayegi?",
+    "urdu": "صبح کے نو بجے۔ ریسیپشن پر بیس مریض، سب پوچھ رہے ہیں — میری باری کب آئے گی؟",
+    "v3": "[warm] صبح کے نو بجے۔ ریسیپشن پر بیس مریض... سب پوچھ رہے ہیں — میری باری کب آئے گی؟"
   },
   {
     "id": "02",
-    "roman": "Sab se pehle, patient normal hai ya emergency. Ek click, aur poori screen ka rang badal jata hai. Door se bhi pata chal jata hai ke emergency token ban raha hai.",
-    "urdu": "سب سے پہلے، مریض نارمل ہے یا ایمرجنسی۔ ایک کلک، اور پوری اسکرین کا رنگ بدل جاتا ہے۔ دور سے بھی پتہ چل جاتا ہے کہ ایمرجنسی ٹوکن بن رہا ہے۔",
-    "v3": "سب سے پہلے... مریض نارمل ہے، یا ایمرجنسی؟ [excited] بس ایک کلک، اور پوری اسکرین کا رنگ بدل جاتا ہے۔ دور سے بھی پتہ چل جاتا ہے کہ ایمرجنسی ٹوکن بن رہا ہے۔"
+    "roman": "Register par likhna, awaz de kar bulana, aur phir wohi jhagra — main pehle aaya tha. Yeh roz ka masla hai.",
+    "urdu": "رجسٹر پر لکھنا، آواز دے کر بلانا، اور پھر وہی جھگڑا — میں پہلے آیا تھا۔ یہ روز کا مسئلہ ہے۔",
+    "v3": "[thoughtful] رجسٹر پر لکھنا... آواز دے کر بلانا... اور پھر وہی جھگڑا — میں پہلے آیا تھا۔ یہ روز کا مسئلہ ہے۔"
   },
   {
     "id": "03",
-    "roman": "Purana patient hai? Sirf phone number daalein. Naam, umar, sab kuch khud bhar jata hai. Dobara likhne ki zaroorat nahi.",
-    "urdu": "پرانا مریض ہے؟ صرف فون نمبر ڈالیں۔ نام، عمر، سب کچھ خود بھر جاتا ہے۔ دوبارہ لکھنے کی ضرورت نہیں۔",
-    "v3": "[curious] پرانا مریض ہے؟ صرف فون نمبر ڈالیں۔ نام، عمر... سب کچھ خود بھر جاتا ہے۔ [warm] دوبارہ لکھنے کی ضرورت ہی نہیں۔"
+    "roman": "Is ka hal — Sultan Medical Center ka token aur billing system. Aaiye, shuru se dekhte hain.",
+    "urdu": "اس کا حل — سلطان میڈیکل سینٹر کا ٹوکن اور بلنگ سسٹم۔ آئیے، شروع سے دیکھتے ہیں۔",
+    "v3": "[excited] اس کا حل — سلطان میڈیکل سینٹر کا ٹوکن اور بلنگ سسٹم۔ آئیے... شروع سے دیکھتے ہیں۔"
   },
   {
     "id": "04",
-    "roman": "Doctor chunein. Naam, speciality aur room number. Yeh sab parchi par print hota hai, to patient ko pata hota hai kahan jana hai.",
-    "urdu": "ڈاکٹر چنیں۔ نام، اسپیشلٹی اور روم نمبر۔ یہ سب پرچی پر پرنٹ ہوتا ہے، تو مریض کو پتہ ہوتا ہے کہاں جانا ہے۔",
-    "v3": "پھر ڈاکٹر چنیں۔ نام، اسپیشلٹی، اور روم نمبر۔ یہ سب پرچی پر پرنٹ ہوتا ہے... تو مریض کو پتہ ہوتا ہے کہ جانا کہاں ہے۔"
+    "roman": "Pehla sawaal — mareez normal hai ya emergency? Ek click, aur poori screen laal ho jati hai. Ab ghalti mumkin nahi.",
+    "urdu": "پہلا سوال — مریض نارمل ہے یا ایمرجنسی؟ ایک کلک، اور پوری اسکرین لال ہو جاتی ہے۔ اب غلطی ممکن نہیں۔",
+    "v3": "[curious] پہلا سوال — مریض نارمل ہے یا ایمرجنسی؟ ایک کلک... اور پوری اسکرین لال ہو جاتی ہے۔ اب غلطی ممکن نہیں۔"
   },
   {
     "id": "05",
-    "roman": "Agar doctor ne test likhe hain, wo abhi add kar dein. Blood test, X-ray, jo bhi chahiye. Total khud jama ho jata hai. Patient ek dafa paisay deta hai, ek hi parchi milti hai.",
-    "urdu": "اگر ڈاکٹر نے ٹیسٹ لکھے ہیں، وہ ابھی ایڈ کر دیں۔ بلڈ ٹیسٹ، ایکسرے، جو بھی چاہیے۔ ٹوٹل خود جمع ہو جاتا ہے۔ مریض ایک دفعہ پیسے دیتا ہے، ایک ہی پرچی ملتی ہے۔",
-    "v3": "اگر ڈاکٹر نے ٹیسٹ لکھے ہیں، وہ ابھی ایڈ کر دیں۔ بلڈ ٹیسٹ، ایکسرے... جو بھی چاہیے۔ [excited] ٹوٹل خود جمع ہو جاتا ہے! مریض ایک دفعہ پیسے دیتا ہے، اور ایک ہی پرچی ملتی ہے۔"
+    "roman": "Purana mareez hai? Sirf phone number daaliye. Naam, umar, poora record — sab khud aa jata hai.",
+    "urdu": "پرانا مریض ہے؟ صرف فون نمبر ڈالیے۔ نام، عمر، پورا ریکارڈ — سب خود آ جاتا ہے۔",
+    "v3": "[warm] پرانا مریض ہے؟ صرف فون نمبر ڈالیے۔ نام، عمر، پورا ریکارڈ... سب خود آ جاتا ہے۔"
   },
   {
     "id": "06",
-    "roman": "Token banayein. Number itna bara ke door se parha jaye, aur parchi apne aap print ho jati hai.",
-    "urdu": "ٹوکن بنائیں۔ نمبر اتنا بڑا کہ دور سے پڑھا جائے، اور پرچی اپنے آپ پرنٹ ہو جاتی ہے۔",
-    "v3": "اور بس... ٹوکن تیار۔ [excited] نمبر اتنا بڑا کہ دور سے پڑھا جائے، اور پرچی اپنے آپ پرنٹ ہو جاتی ہے۔"
+    "roman": "Doctor chuniye. Naam, speciality, room number — aur saath hi intezaar ka waqt bhi.",
+    "urdu": "ڈاکٹر چنیے۔ نام، اسپیشلٹی، روم نمبر — اور ساتھ ہی انتظار کا وقت بھی۔",
+    "v3": "[warm] ڈاکٹر چنیے۔ نام، اسپیشلٹی، روم نمبر — اور ساتھ ہی انتظار کا وقت بھی۔"
   },
   {
     "id": "07",
-    "roman": "Baad me koi test add karna ho, to Billing me jayein. Har item alag alag. Abhi paisay lein ya baad me. Aakhir me ek bill, ek total.",
-    "urdu": "بعد میں کوئی ٹیسٹ ایڈ کرنا ہو، تو بلنگ میں جائیں۔ ہر آئٹم الگ الگ۔ ابھی پیسے لیں یا بعد میں۔ آخر میں ایک بل، ایک ٹوٹل۔",
-    "v3": "بعد میں کوئی ٹیسٹ ایڈ کرنا ہو؟ تو بلنگ میں جائیں۔ ہر آئٹم الگ الگ... ابھی پیسے لیں، یا بعد میں۔ [warm] آخر میں ایک بل، ایک ٹوٹل۔"
+    "roman": "Token ban gaya. Number itna bara ke door se parha jaye, aur parchi apne aap print ho gayi.",
+    "urdu": "ٹوکن بن گیا۔ نمبر اتنا بڑا کہ دور سے پڑھا جائے، اور پرچی اپنے آپ پرنٹ ہو گئی۔",
+    "v3": "[excited] ٹوکن بن گیا۔ نمبر اتنا بڑا کہ دور سے پڑھا جائے... اور پرچی اپنے آپ پرنٹ ہو گئی۔"
   },
   {
     "id": "08",
-    "roman": "Aur malik ke liye, poora hisaab. Kitni aamdani hui, kitne mareez aaye, kaun sa doctor kitna busy raha, aur kaun se test sab se zyada chalte hain. Har number pichle mahine se muqabla kar ke dikhaya jata hai.",
-    "urdu": "اور مالک کے لیے، پورا حساب۔ کتنی آمدنی ہوئی، کتنے مریض آئے، کون سا ڈاکٹر کتنا مصروف رہا، اور کون سے ٹیسٹ سب سے زیادہ چلتے ہیں۔ ہر نمبر پچھلے مہینے سے مقابلہ کر کے دکھایا جاتا ہے۔",
-    "v3": "[thoughtful] اور مالک کے لیے... پورا حساب۔ کتنی آمدنی ہوئی، کتنے مریض آئے، کون سا ڈاکٹر کتنا مصروف رہا، اور کون سے ٹیسٹ سب سے زیادہ چلتے ہیں۔ ہر نمبر پچھلے مہینے سے مقابلہ کر کے دکھایا جاتا ہے۔"
+    "roman": "Ab asli kamaal dekhiye. Teen screen, ek hi waqt — reception, waiting room, aur doctor ka kamra.",
+    "urdu": "اب اصلی کمال دیکھیے۔ تین اسکرین، ایک ہی وقت — ریسیپشن، ویٹنگ روم، اور ڈاکٹر کا کمرہ۔",
+    "v3": "[excited] اب اصلی کمال دیکھیے۔ تین اسکرین، ایک ہی وقت — ریسیپشن... ویٹنگ روم... اور ڈاکٹر کا کمرہ۔"
   },
   {
     "id": "09",
-    "roman": "Tez, saaf, aur seekhne me asaan. Aap ke clinic ke liye tayyar.",
-    "urdu": "تیز، صاف، اور سیکھنے میں آسان۔ آپ کے کلینک کے لیے تیار۔",
-    "v3": "[warm] تیز، صاف، اور سیکھنے میں آسان۔ آپ کے کلینک کے لیے... تیار ہے۔"
+    "roman": "Reception par token bana, aur do second mein waiting room ki screen par aa gaya. Koi register nahi, koi awaz nahi. Mareez khud dekh raha hai ke uska number kahan hai, aur kitna intezaar baqi hai.",
+    "urdu": "ریسیپشن پر ٹوکن بنا، اور دو سیکنڈ میں ویٹنگ روم کی اسکرین پر آ گیا۔ کوئی رجسٹر نہیں، کوئی آواز نہیں۔ مریض خود دیکھ رہا ہے کہ اس کا نمبر کہاں ہے، اور کتنا انتظار باقی ہے۔",
+    "v3": "[excited] ریسیپشن پر ٹوکن بنا... اور دو سیکنڈ میں ویٹنگ روم کی اسکرین پر آ گیا۔ کوئی رجسٹر نہیں، کوئی آواز نہیں۔ مریض خود دیکھ رہا ہے کہ اس کا نمبر کہاں ہے... اور کتنا انتظار باقی ہے۔"
+  },
+  {
+    "id": "10",
+    "roman": "Ab doctor ki screen. Apna PIN daala, aur sirf apne mareez saamne. Kisi doosre doctor ki list nahi, koi ghair zaroori cheez nahi. Phone par bhi wohi, tablet par bhi wohi.",
+    "urdu": "اب ڈاکٹر کی اسکرین۔ اپنا پن ڈالا، اور صرف اپنے مریض سامنے۔ کسی دوسرے ڈاکٹر کی لسٹ نہیں، کوئی غیر ضروری چیز نہیں۔ فون پر بھی وہی، ٹیبلٹ پر بھی وہی۔",
+    "v3": "[warm] اب ڈاکٹر کی اسکرین۔ اپنا پن ڈالا... اور صرف اپنے مریض سامنے۔ کسی دوسرے ڈاکٹر کی لسٹ نہیں، کوئی غیر ضروری چیز نہیں۔ فون پر بھی وہی... ٹیبلٹ پر بھی وہی۔"
+  },
+  {
+    "id": "11",
+    "roman": "Doctor ne agla mareez bulaya. Sirf ek button — aur usi waqt teenon screen par tabdeeli aa gayi. Reception ko pata, waiting room ko pata, aur mareez ko bhi.",
+    "urdu": "ڈاکٹر نے اگلا مریض بلایا۔ صرف ایک بٹن — اور اسی وقت تینوں اسکرین پر تبدیلی آ گئی۔ ریسیپشن کو پتا، ویٹنگ روم کو پتا، اور مریض کو بھی۔",
+    "v3": "[excited] ڈاکٹر نے اگلا مریض بلایا۔ صرف ایک بٹن — اور اسی وقت تینوں اسکرین پر تبدیلی آ گئی۔ ریسیپشن کو پتا... ویٹنگ روم کو پتا... اور مریض کو بھی۔"
+  },
+  {
+    "id": "12",
+    "roman": "Token number, room number, doctor ka naam — sab bol kar bataya jata hai. Ab kisi ko awaz de kar bulana nahi parta.",
+    "urdu": "ٹوکن نمبر، روم نمبر، ڈاکٹر کا نام — سب بول کر بتایا جاتا ہے۔ اب کسی کو آواز دے کر بلانا نہیں پڑتا۔",
+    "v3": "[warm] ٹوکن نمبر، روم نمبر، ڈاکٹر کا نام — سب بول کر بتایا جاتا ہے۔ اب کسی کو آواز دے کر بلانا نہیں پڑتا۔"
+  },
+  {
+    "id": "13",
+    "roman": "Emergency aa jaye to woh pehle jayega — aur screen par likh kar bata deta hai kyun. Isi liye koi shikayat nahi karta.",
+    "urdu": "ایمرجنسی آ جائے تو وہ پہلے جائے گا — اور اسکرین پر لکھ کر بتا دیتا ہے کیوں۔ اسی لیے کوئی شکایت نہیں کرتا۔",
+    "v3": "[thoughtful] ایمرجنسی آ جائے تو وہ پہلے جائے گا — اور اسکرین پر لکھ کر بتا دیتا ہے کیوں۔ اسی لیے کوئی شکایت نہیں کرتا۔"
+  },
+  {
+    "id": "14",
+    "roman": "Aur agar internet chala jaye? Koi masla nahi. Token phir bhi bantay rahenge, parchi phir bhi chhapti rahegi. Jaise hi net wapas aaya, sab kuch khud sync ho jata hai. Ek bhi mareez chhoota nahi.",
+    "urdu": "اور اگر انٹرنیٹ چلا جائے؟ کوئی مسئلہ نہیں۔ ٹوکن پھر بھی بنتے رہیں گے، پرچی پھر بھی چھپتی رہے گی۔ جیسے ہی نیٹ واپس آیا، سب کچھ خود سنک ہو جاتا ہے۔ ایک بھی مریض چھوٹا نہیں۔",
+    "v3": "[thoughtful] اور اگر انٹرنیٹ چلا جائے؟ کوئی مسئلہ نہیں۔ ٹوکن پھر بھی بنتے رہیں گے... پرچی پھر بھی چھپتی رہے گی۔ جیسے ہی نیٹ واپس آیا... سب کچھ خود سنک ہو جاتا ہے۔ ایک بھی مریض چھوٹا نہیں۔"
+  },
+  {
+    "id": "15",
+    "roman": "Doctor ne baad mein koi test likh diya? Billing kholiye aur wahin add kar dijiye. Har item alag alag likha jata hai, kaunsa paid hai aur kaunsa baqi. Hisaab mein kabhi gharbar nahi hoti.",
+    "urdu": "ڈاکٹر نے بعد میں کوئی ٹیسٹ لکھ دیا؟ بلنگ کھولیے اور وہیں ایڈ کر دیجیے۔ ہر آئٹم الگ الگ لکھا جاتا ہے، کون سا پیڈ ہے اور کون سا باقی۔ حساب میں کبھی گڑبڑ نہیں ہوتی۔",
+    "v3": "[warm] ڈاکٹر نے بعد میں کوئی ٹیسٹ لکھ دیا؟ بلنگ کھولیے اور وہیں ایڈ کر دیجیے۔ ہر آئٹم الگ الگ لکھا جاتا ہے... کون سا پیڈ ہے اور کون سا باقی۔ حساب میں کبھی گڑبڑ نہیں ہوتی۔"
+  },
+  {
+    "id": "16",
+    "roman": "Aur malik ke liye poora hisaab. Kitni aamdani hui, kitne mareez aaye, kaunsa doctor sab se masroof raha, kaunsa test sab se zyada chala. Sab kuch ek nazar mein.",
+    "urdu": "اور مالک کے لیے پورا حساب۔ کتنی آمدنی ہوئی، کتنے مریض آئے، کون سا ڈاکٹر سب سے مصروف رہا، کون سا ٹیسٹ سب سے زیادہ چلا۔ سب کچھ ایک نظر میں۔",
+    "v3": "[warm] اور مالک کے لیے پورا حساب۔ کتنی آمدنی ہوئی... کتنے مریض آئے... کون سا ڈاکٹر سب سے مصروف رہا... کون سا ٹیسٹ سب سے زیادہ چلا۔ سب کچھ ایک نظر میں۔"
+  },
+  {
+    "id": "17",
+    "roman": "Na jhagra, na shor, na koi parchi kho jaye. Aap ke clinic ke liye — bilkul tayyar.",
+    "urdu": "نہ جھگڑا، نہ شور، نہ کوئی پرچی کھو جائے۔ آپ کے کلینک کے لیے — بالکل تیار۔",
+    "v3": "[warm] نہ جھگڑا... نہ شور... نہ کوئی پرچی کھو جائے۔ آپ کے کلینک کے لیے — بالکل تیار۔"
   }
 ]

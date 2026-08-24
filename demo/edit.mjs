@@ -71,8 +71,19 @@ export function assemble(o) {
   // small — enough to keep the frame alive, not enough to notice.
   const retime = o.speed && o.speed !== 1 ? `setpts=${(1 / o.speed).toFixed(6)}*PTS,` : "";
   f.push(
-    `[1:v]${retime}fps=25,scale=1512:-1,` +
-      `zoompan=z='min(1.05,1.0+0.00018*on)':d=1` +
+    /*
+      A gentle push, not a crop.
+
+      This used to pre-scale to 1512 — a 5% upscale on a 1440 frame, which
+      trimmed every edge before the zoom even started. That was harmless when
+      each scene was one app screen with generous margins, but the demo now
+      spends half its length on demo/wall.html, where three panels are laid
+      out to the edges and the trim clipped their borders and the title. The
+      smaller scale keeps the whole frame while preserving the slow drift
+      that stops a screen recording feeling static.
+    */
+    `[1:v]${retime}fps=25,scale=1464:-1,` +
+      `zoompan=z='min(1.03,1.0+0.00012*on)':d=1` +
       `:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1440x900:fps=25,` +
       `format=yuv420p[bodyv]`,
   );

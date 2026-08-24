@@ -1,0 +1,173 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Parallel screens</title>
+<!--
+  The three screens of a working clinic, side by side and all live.
+
+  Each pane is a real iframe pointed at the running application — nothing is
+  mocked, screenshotted or replayed. That matters for this particular claim:
+  the demo says a token issued at the counter appears on the waiting-room
+  board and in the doctor's room within seconds, and the only honest way to
+  show that is to let all three run at once and film what happens.
+
+  Reception is given the larger pane because it is where the action starts
+  and where the cursor works; the board and the doctor's tablet are the
+  consequences, and read fine at a smaller size because both are designed to
+  be legible from a distance.
+-->
+<style>
+  :root {
+    --ink: #f2f6fc;
+    --dim: #8496ad;
+    --line: #23324a;
+    --accent: #3d9bf0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1440px;
+    height: 900px;
+    overflow: hidden;
+    background: #070d16;
+    color: var(--ink);
+    font: 14px ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto 1fr 1fr;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+  h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
+  header span { color: var(--dim); font-size: 14px; }
+
+  /* Each pane is a labelled frame. The label is part of the story: a viewer
+     has to know which physical screen they are looking at. */
+  figure {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: #0d1826;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  figcaption {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 13px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--dim);
+    background: #101c2c;
+    flex: none;
+  }
+  figcaption b { color: var(--accent); font-weight: 800; }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #3ddc97;
+    box-shadow: 0 0 0 0 rgba(61, 220, 151, 0.6);
+    animation: live 2s infinite;
+  }
+  @keyframes live {
+    70% { box-shadow: 0 0 0 9px rgba(61, 220, 151, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(61, 220, 151, 0); }
+  }
+
+  .frame { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+  /*
+    Each pane renders its page at full desktop width and then scales it down,
+    rather than loading it into a narrow viewport. A narrow viewport would
+    trigger the app's own mobile layout, and the point here is to show the
+    real screens the clinic uses, not three phone views.
+  */
+  iframe {
+    position: absolute;
+    top: 0; left: 0;
+    border: 0;
+    transform-origin: 0 0;
+  }
+
+  /* Reception spans the left column across both rows: it is the origin of
+     everything the other two panes react to. */
+  .reception { grid-row: 2 / 4; }
+</style>
+
+<header>
+  <h1>Sultan Medical Center</h1>
+  <span>Reception · Waiting room · Doctor — ek hi waqt, live</span>
+</header>
+
+<figure class="reception">
+  <figcaption><i class="dot"></i> <b>Reception</b> — counter</figcaption>
+  <div class="frame"><iframe id="f-reception"></iframe></div>
+</figure>
+
+<figure>
+  <figcaption><i class="dot"></i> <b>Display</b> — waiting room TV</figcaption>
+  <div class="frame"><iframe id="f-display"></iframe></div>
+</figure>
+
+<figure>
+  <figcaption><i class="dot"></i> <b>Doctor</b> — consulting room</figcaption>
+  <div class="frame"><iframe id="f-doctor"></iframe></div>
+</figure>
+
+<script>
+  /*
+    Render each pane at a real desktop size, then scale to fit its box.
+
+    Without this the frames would inherit their own small width and the app
+    would switch to the mobile layout it is designed to fall back to — which
+    is correct behaviour, and the wrong thing to film when the subject is the
+    counter monitor and the wall-mounted TV.
+  */
+  const BASE = new URLSearchParams(location.search).get("base")
+    || "http://localhost:3000";
+
+  const PANES = [
+    // Reception is the widest real screen and must not be cropped: the form
+    // is the thing being demonstrated, so it is fitted rather than covered.
+    ["f-reception", "/", 1180, 1120, "cover"],
+    ["f-display", "/display", 1600, 900, "cover"],
+    // Narrower and shorter: the doctor pane is a short, wide box, so a tall
+    // page scales down to something unreadable. This is close to a real
+    // tablet in landscape, which is what a doctor actually holds.
+    ["f-doctor", "/doctor", 900, 560, "cover"],
+  ];
+
+  for (const [id, path, w, h, fit] of PANES) {
+    const el = document.getElementById(id);
+    const box = el.parentElement;
+    el.style.width = w + "px";
+    el.style.height = h + "px";
+    /*
+      "contain" fits the whole screen in and may leave a margin; "cover"
+      fills the pane and crops. Reception and the doctor's tablet are
+      contained because a cropped form or a cut-off button misrepresents the
+      screen. The board is covered: it is designed to bleed to the edges of a
+      TV, and a letterboxed one would look like a bug rather than a wall
+      display.
+    */
+    const scale = fit === "cover"
+      ? Math.max(box.clientWidth / w, box.clientHeight / h)
+      : Math.min(box.clientWidth / w, box.clientHeight / h);
+    el.style.transform = "scale(" + scale + ")";
+    // Centre a contained pane rather than pinning it to the corner.
+    if (fit !== "cover") {
+      const left = Math.max(0, (box.clientWidth - w * scale) / 2);
+      el.style.left = left + "px";
+    }
+    el.src = BASE + path;
+  }
+</script>

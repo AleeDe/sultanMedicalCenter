@@ -12,6 +12,7 @@
 import { chromium } from "playwright";
 import { mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const BASE = process.env.DEMO_URL ?? "http://localhost:3000";
 const OUT = path.join(process.cwd(), "demo", "out");
@@ -181,19 +182,27 @@ if (!phone) {
 
 console.log("recording…");
 
-/* 1 — opening: the clean New Token screen */
+/* 1-3 — the problem, told on the screen reception actually starts from */
 await goto(BASE);
-beginScene("opening");
+beginScene("opening: the morning rush");
 await beat(1500);
 await endScene();
 
-/* 2 — triage: the whole screen repaints for an emergency */
+beginScene("the daily argument");
+await beat(1200);
+await endScene();
+
+beginScene("the answer");
+await beat(1200);
+await endScene();
+
+/* 4 — triage: the whole screen repaints for an emergency */
 beginScene("emergency triage");
 await click(page.getByRole("button", { name: /Emergency/ }), { pause: 2600 });
 await click(page.getByRole("button", { name: /Normal OPD/ }), { pause: 800 });
 await endScene();
 
-/* 3 — returning patient recognised from the phone number alone */
+/* 5 — returning patient recognised from the phone number alone */
 beginScene("phone lookup");
 await type("#phone", phone);
 await page.keyboard.press("Enter");
@@ -201,35 +210,18 @@ await page.waitForSelector("text=Known patient", { timeout: 8000 }).catch(() => 
 await beat(1500);
 await endScene();
 
-/* 4 — doctor, with the room that will be printed on the slip */
+/* 6 — doctor, with the room that will be printed on the slip */
 beginScene("doctor");
 await click(page.getByRole("button", { name: /Dr\. Sara Iqbal/ }), { pause: 1800 });
 await endScene();
 
-/* 5 — labs added at the counter, total adding itself up */
-beginScene("labs");
-await click(page.getByRole("button", { name: /Add lab tests or services/ }), {
-  pause: 600,
-});
-await click(page.getByRole("button", { name: "Lab", exact: true }), { pause: 500 });
-await click(page.getByRole("button", { name: /Complete Blood Count/ }), {
-  pause: 800,
-});
-await click(page.getByRole("button", { name: "Radiology", exact: true }), {
-  pause: 500,
-});
-await click(page.getByRole("button", { name: /X-Ray Chest/ }), { pause: 900 });
-await page.getByText(/Total to collect/).scrollIntoViewIfNeeded();
-await beat(1600);
-await endScene();
-
-/* 6 — issue, then hold on the printed slip itself */
+/* 7 — issue, then hold on the printed slip itself */
 beginScene("issue + slip");
 await click(page.getByRole("button", { name: /Issue Token & Print/ }), {
   pause: 300,
 });
 await page.waitForSelector("text=Token issued", { timeout: 15000 });
-await beat(1800);
+await beat(1500);
 
 // Bring the off-canvas print slip on screen — this is the actual artwork the
 // printer receives, so showing it beats describing it.
@@ -241,47 +233,150 @@ await page.evaluate(() => {
     "visibility:visible;z-index:2147483000;background:#fff;padding:10px 16px;" +
     "box-shadow:0 24px 60px rgba(0,0,0,.35);border-radius:6px;";
 });
-await beat(2600);
+await beat(2200);
 await page.evaluate(() => {
   const root = document.getElementById("print-root");
   if (root) root.style.cssText = "position:fixed;left:-10000px;visibility:hidden;";
 });
 await endScene();
 
-/* 7 — the running bill */
+/* ------------------------------------------------ the three screens, live */
+
+/*
+  From here the demo runs on demo/wall.html: reception, the waiting-room
+  board and the doctor's tablet in one frame, each a real iframe onto the
+  running app.
+
+  This is the part that cannot be told, only shown. The claim is that a token
+  issued at the counter reaches the board and the doctor's room by itself,
+  and the only honest way to demonstrate that is to leave all three visible
+  and let the viewer watch it happen.
+*/
+const WALL = pathToFileURL(path.join(process.cwd(), "demo", "wall.html")).href
+  + "?base=" + encodeURIComponent(BASE);
+
+/*
+  "load", not "networkidle": the board inside this page polls every five
+  seconds, so the network is never idle and networkidle waits until it times
+  out. The explicit beat below is what actually gives the frames time to
+  paint.
+*/
+await page.goto(WALL, { waitUntil: "load" });
+await installCursor();
+await beat(4000);
+
+beginScene("three screens at once");
+await beat(1500);
+await endScene();
+
+/* 9 — a token issued on the left appears on the board on the right */
+beginScene("counter -> waiting room");
+const rec = page.frameLocator("#f-reception");
+await rec.locator("#phone").fill("0300" + String(Date.now()).slice(-7));
+await beat(700);
+await rec.locator("#name").fill("Nadia Perveen");
+await rec.locator("#age").fill("34");
+await beat(400);
+/*
+  Clicked programmatically rather than through the mouse.
+
+  The panes are CSS-scaled to fit the wall, and a scaled iframe puts
+  Playwright's hit-testing at odds with where the element actually is: the
+  locator resolves, then the click lands on whatever sits at those
+  coordinates in the parent document. dispatchEvent bypasses the geometry
+  entirely and drives the element itself, which is what is being
+  demonstrated anyway.
+*/
+await rec.getByRole("button", { name: /General Physician/ }).first()
+  .dispatchEvent("click");
+await beat(500);
+const gender = rec.getByRole("button", { name: /^(Male|Female)$/ }).first();
+if (await gender.count()) await gender.dispatchEvent("click");
+await beat(600);
+const issue = rec.getByRole("button", { name: /Issue Token/ }).first();
+if (await issue.isEnabled().catch(() => false)) {
+  await issue.dispatchEvent("click");
+  // Long enough for the board's five-second poll to pick the new token up.
+  await beat(7000);
+}
+await endScene();
+
+/* 10 — the doctor signs in and sees only their own patients */
+beginScene("doctor signs in");
+const doc = page.frameLocator("#f-doctor");
+const pick = doc.getByRole("button", { name: /Dr\. Ahmed Raza/ }).first();
+if (await pick.count()) {
+  await pick.dispatchEvent("click");
+  await beat(800);
+    // Not 1234: the app warns on screen when a doctor is still on the default
+  // PIN, and that banner has no place in a sales demo.
+  await doc.locator('input[aria-label="Doctor PIN"]').fill("2468");
+  await beat(600);
+  await doc.getByRole("button", { name: /^Sign in$/ }).dispatchEvent("click");
+  await beat(3000);
+}
+await endScene();
+
+/* 11-12 — calling the next patient, and the board announcing it */
+beginScene("call next patient");
+const callBtn = doc.getByRole("button", { name: /Call next patient/ }).first();
+if (await callBtn.count() && await callBtn.isEnabled().catch(() => false)) {
+  await callBtn.dispatchEvent("click");
+  // The board polls every five seconds; the overlay then holds for twelve.
+  await beat(7000);
+}
+await endScene();
+
+beginScene("spoken announcement");
+await beat(4000);
+await endScene();
+
+/* 13 — an emergency jumps the queue, and the board says why */
+beginScene("emergency explained");
+await beat(3500);
+await endScene();
+
+/* ------------------------------------------------- back to the single view */
+
+/* 14 — the offline story, told from the status chip reception watches */
+beginScene("works offline");
+await goto(BASE);
+await beat(800);
+await endScene();
+
+/* 15 — the running bill */
 beginScene("billing ledger");
 await goto(`${BASE}/billing`);
 const firstVisit = page.locator("li button").first();
 if (await firstVisit.count()) {
-  await click(firstVisit, { pause: 1300 });
+  await click(firstVisit, { pause: 900 });
   await click(page.getByRole("button", { name: "Lab", exact: true }).first(), {
-    pause: 600,
+    pause: 400,
   });
   const later = page
     .locator("li", { hasText: "Liver Function Test" })
     .getByRole("button", { name: "Later" });
-  if (await later.count()) await click(later, { pause: 1600 });
-  await beat(1200);
+  if (await later.count()) await click(later, { pause: 900 });
 }
 await endScene();
 
-/* 8 — the owner's dashboard */
+/* 16 — the owner's dashboard */
 beginScene("analytics");
 await goto(`${BASE}/admin`);
 await type('input[aria-label="Admin PIN"]', "1234", { delay: 200 });
 await click(page.getByRole("button", { name: "Unlock" }), { pause: 800 });
 await page.waitForSelector("text=Revenue collected", { timeout: 12000 });
-await beat(2000);
-for (const y of [400, 850, 1300]) {
+await beat(900);
+for (const y of [500, 1000]) {
   await page.mouse.wheel(0, y);
-  await beat(1500);
+  await beat(900);
 }
 await endScene();
 
-/* 9 — close on the screen reception actually lives in */
+/* 17 — close on the three screens, which is what the clinic actually runs */
 beginScene("close");
-await goto(BASE);
-await beat(1500);
+await page.goto(WALL, { waitUntil: "load" });
+await beat(3500);
 await endScene();
 
 /* -------------------------------------------------------------- finish */
