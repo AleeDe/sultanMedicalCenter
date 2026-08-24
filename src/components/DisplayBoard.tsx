@@ -102,15 +102,22 @@ export function DisplayBoard({
   /*
     Who to announce.
 
-    The first CALLED patient across every doctor — called, not in
-    consultation: the announcement is what gets them out of their seat, so it
-    must fire when they are summoned, not when they arrive.
+    EVERY outstanding CALLED patient, not just the most recent one — called,
+    not in consultation: the announcement is what gets them out of their
+    seat, so it must fire when they are summoned, not when they arrive.
+
+    This used to pass only the latest call, which silently lost patients.
+    Four doctors share one board and the poll runs every five seconds, so two
+    doctors calling within the same window is routine rather than rare — and
+    the patient who was not the most recent simply never heard their number.
+    The overlay now announces each one in turn and remembers which it has
+    already spoken.
 
     The key includes recall_count so that re-calling the same patient (they
     did not hear it the first time) announces again, while the five-second
     poll re-rendering the same state does not.
   */
-  const called: Called | null = latestCalled(active);
+  const called: Called[] = outstandingCalls(active);
 
   return (
     <div
@@ -213,18 +220,15 @@ export function DisplayBoard({
  * anyway, so a dependency on it could never hit the cache. What actually
  * prevents re-announcing is the stable `key`, which the overlay compares.
  */
-function latestCalled(active: DoctorQueue[]): Called | null {
-  let best: Called | null = null;
-  let bestAt = -Infinity;
+function outstandingCalls(active: DoctorQueue[]): Called[] {
+  const calls: Called[] = [];
 
   for (const q of active) {
     for (const c of q.called) {
-      // A row with no called_at should never win over a timestamped one,
-      // but must still be announceable when it is all there is.
+      // A row with no called_at is still announceable; it simply sorts as
+      // oldest, which is the safe end to put an unknown time.
       const at = c.called_at ? Date.parse(c.called_at) : 0;
-      if (at < bestAt) continue;
-      bestAt = at;
-      best = {
+      calls.push({
         // recall_count is part of the identity so that re-calling the same
         // patient (they did not hear it) announces again, while the
         // five-second poll re-rendering the same state does not.
@@ -234,10 +238,14 @@ function latestCalled(active: DoctorQueue[]): Called | null {
         patientName: c.patient_name,
         room: q.room || null,
         doctorName: q.doctorName,
-      };
+      });
     }
   }
-  return best;
+
+  // Oldest first: if two doctors call within the same poll window, the one
+  // who called first is announced first, which is the order the patients
+  // were actually summoned in.
+  return calls.sort((a, b) => a.calledAt - b.calledAt);
 }
 
 function Column({ q }: { q: DoctorQueue }) {

@@ -4,7 +4,10 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   announcementText,
   chime,
+  loadVoice,
+  phraseVoiceReady,
   speak,
+  speakAnnouncement,
   unlockAudio,
   voiceAvailable,
 } from "@/lib/announce";
@@ -47,48 +50,125 @@ export function AnnouncementOverlay({
   called,
   speechLang,
 }: {
-  called: Called | null;
+  /** Every outstanding call, oldest first. */
+  called: Called[];
   /** e.g. "ur-PK". Speech is skipped entirely if no such voice exists. */
   speechLang: string;
 }) {
   const [shown, setShown] = useState<Called | null>(null);
-  const lastKey = useRef<string | null>(null);
+
+  /*
+    Announcements are a QUEUE, played one at a time.
+
+    Four doctors share one board and it polls every five seconds, so two of
+    them calling inside the same window is routine. Announcing them
+    concurrently would overlap two voices reading two different numbers —
+    the one situation guaranteed to leave every patient unsure what was
+    said — so each waits for the one before it to finish.
+  */
+  const pending = useRef<Called[]>([]);
+  const announced = useRef<Set<string>>(new Set());
+  const busy = useRef(false);
+  // Set once the board has seen its first poll, so the stale-call rule below
+  // applies only to calls that were already outstanding at startup.
+  const started = useRef(false);
 
   useEffect(() => {
-    if (!called) return;
-    // Only fire on a genuine change of who is being called. The board polls
-    // every five seconds and would otherwise re-announce the same patient.
-    if (lastKey.current === called.key) return;
+    const first = !started.current;
+    started.current = true;
 
-    const first = lastKey.current === null;
-    lastKey.current = called.key;
+    for (const c of called) {
+      // Only ever announce a given call once. The key carries recall_count,
+      // so a deliberate re-call is a different key and does announce again.
+      if (announced.current.has(c.key)) continue;
+
+      /*
+        A board that has just been switched on must not shout calls that were
+        already outstanding — those summonses happened minutes ago and the
+        patients are long since in the room.
+
+        Judged on each call's AGE rather than simply "is this the first poll",
+        because the first call a board observes is very often a real, live
+        one: staff open this screen at the start of a clinic and the very next
+        thing that happens is a patient being called.
+      */
+      if (first && Date.now() - c.calledAt > STALE_CALL_MS) {
+        announced.current.add(c.key);
+        continue;
+      }
+
+      announced.current.add(c.key);
+      pending.current.push(c);
+    }
 
     /*
-      A board that has just been switched on must not shout the call that was
-      already outstanding — that summons happened minutes ago and the patient
-      is long since in the room.
+      Bound the memory of what has been announced.
 
-      Judged on the call's AGE rather than simply "is this the first one we
-      have seen", because the first call a board observes is very often a
-      real, live one: staff open this screen at the start of a clinic and the
-      very next thing that happens is a patient being called.
+      A board runs for weeks without a reload, and without this the set would
+      grow by one entry per patient forever. Trimming the oldest half is
+      safe: those calls are long finished, and re-adding one would at worst
+      re-announce a patient who left hours ago — which cannot happen anyway,
+      because the row has left the CALLED state by then.
     */
-    if (first && Date.now() - called.calledAt > STALE_CALL_MS) return;
-
-    setShown(called);
-    chime();
-    if (voiceAvailable(speechLang)) {
-      // After the chime, so the two do not overlap.
-      const t = setTimeout(
-        () =>
-          speak(
-            announcementText(called.displayNo, called.doctorName, called.room),
-            speechLang,
-          ),
-        1100,
-      );
-      return () => clearTimeout(t);
+    if (announced.current.size > 500) {
+      const keep = [...announced.current].slice(-250);
+      announced.current = new Set(keep);
     }
+
+    if (busy.current) return;
+
+    /*
+      Drains the queue, one announcement at a time.
+
+      Deliberately not tied to the effect's cleanup. An announcement is an
+      event, not state to be reconciled: once the chime has sounded, the
+      voice that follows it must happen. An earlier version cancelled the
+      pending speech on the next poll — the chime survived, being
+      synchronous, and the voice never did.
+    */
+    const drain = async () => {
+      busy.current = true;
+      while (pending.current.length > 0) {
+        const next = pending.current.shift();
+        if (!next) break;
+
+        setShown(next);
+        chime();
+
+        // After the chime, so the two do not overlap.
+        await new Promise((r) => setTimeout(r, 1100));
+
+        /*
+          The rendered voice first, browser speech only as a fallback.
+
+          speakAnnouncement() declines when the token number is past the
+          range the build rendered, which is a real possibility on an
+          unusually busy day. A synthetic voice is much worse, and still far
+          better than a patient never hearing their turn called.
+        */
+        let spokenFor = 0;
+        if (phraseVoiceReady()) {
+          spokenFor = await speakAnnouncement(next.displayNo, next.room);
+        }
+        if (!spokenFor && voiceAvailable(speechLang)) {
+          speak(
+            announcementText(next.displayNo, next.doctorName, next.room),
+            speechLang,
+          );
+          // No duration is available from speechSynthesis without waiting on
+          // its events, and this is only the fallback path; a fixed pause is
+          // enough to keep two fallback announcements from colliding.
+          spokenFor = 4;
+        }
+
+        // Wait out the announcement itself, then leave a clear beat before
+        // the next patient's chime so the two calls do not run together.
+        await new Promise((r) => setTimeout(r, spokenFor * 1000 + 900));
+      }
+      busy.current = false;
+    };
+
+    void drain();
   }, [called, speechLang]);
 
   useEffect(() => {
@@ -174,6 +254,9 @@ export function SoundGate({ speechLang }: { speechLang: string }) {
     would not be.
   */
   const [ready, setReady] = useState(false);
+  // Whether the rendered voice loaded, so the label can tell staff setting up
+  // a screen which voice they actually got.
+  const [rendered, setRendered] = useState(false);
 
   const hasVoice = useSyncExternalStore(
     voiceStore.subscribe,
@@ -189,13 +272,15 @@ export function SoundGate({ speechLang }: { speechLang: string }) {
         className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5
           text-base font-semibold text-white/60"
         title={
-          hasVoice
-            ? "Chime and voice announcement are on"
-            : `Chime is on. No ${speechLang} voice is installed on this machine, so names are shown but not spoken.`
+          rendered
+            ? "Chime and spoken announcements are on"
+            : hasVoice
+              ? "Chime is on, using this machine's built-in voice. The recorded announcements did not load."
+              : `Chime is on. No ${speechLang} voice is installed on this machine, so names are shown but not spoken.`
         }
       >
         <IconSpeaker className="h-5 w-5" />
-        {hasVoice ? "Sound on" : "Chime only"}
+        {rendered || hasVoice ? "Sound on" : "Chime only"}
       </span>
     );
   }
@@ -207,6 +292,12 @@ export function SoundGate({ speechLang }: { speechLang: string }) {
         if (await unlockAudio()) {
           setReady(true);
           chime(); // Confirms it worked, in the only way that matters.
+          /*
+            Load the voice NOW, not at the first call. This gesture is the
+            only moment we are guaranteed, and fetching clips while a patient
+            is being summoned would delay the one announcement that matters.
+          */
+          setRendered(await loadVoice());
         }
       }}
       className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-5 py-2

@@ -212,6 +212,25 @@ export async function recallToken(
   return { ok: true, data: null };
 }
 
+/**
+ * Announces an already-called patient again.
+ *
+ * For the patient who was outside, or on the phone, or simply not listening.
+ * The alternative the doctor had was to skip them, which costs the patient
+ * their place over something that was never their fault.
+ *
+ * Distinct from recallToken(), which puts a SKIPPED patient back in line.
+ */
+export async function announceAgain(
+  tokenId: number,
+): Promise<ActionResult<null>> {
+  const id = idSchema.safeParse(tokenId);
+  if (!id.success) return { ok: false, error: "Unknown token." };
+  await sql`select announce_again(${id.data})`;
+  revalidatePath("/queue");
+  return { ok: true, data: null };
+}
+
 const breakSchema = z.object({
   doctorId: idSchema,
   state: z.enum(["AVAILABLE", "ON_BREAK", "FINISHED"]),

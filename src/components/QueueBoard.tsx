@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import {
+  announceAgain,
   callNext,
   finishConsultation,
   getQueues,
@@ -113,6 +114,7 @@ export function QueueBoard({
           pending={pending}
           onCall={() => run(() => callNext(q.doctorId))}
           onStart={(id) => run(() => startConsultation(id))}
+          onAnnounce={(id) => run(() => announceAgain(id))}
           onFinish={(id) => run(() => finishConsultation(id))}
           onSkip={(id) => run(() => skipToken(id))}
           onRecall={(id) => run(() => recallToken(id))}
@@ -132,6 +134,7 @@ function DoctorPanel({
   pending,
   onCall,
   onStart,
+  onAnnounce,
   onFinish,
   onSkip,
   onRecall,
@@ -142,6 +145,7 @@ function DoctorPanel({
   pending: boolean;
   onCall: () => void;
   onStart: (id: number) => void;
+  onAnnounce: (id: number) => void;
   onFinish: (id: number) => void;
   onSkip: (id: number) => void;
   onRecall: (id: number) => void;
@@ -248,6 +252,21 @@ function DoctorPanel({
                   >
                     Start
                   </Button>
+                  {/*
+                    Between "Start" and "Not here" deliberately: it is the
+                    step a doctor should reach for BEFORE giving up on
+                    someone, and putting it in that path makes it the
+                    obvious next thing to try rather than a feature to
+                    remember.
+                  */}
+                  <Button
+                    className="flex-1"
+                    disabled={pending}
+                    onClick={() => onAnnounce(r.token_id)}
+                    title="Announce this number on the waiting-room screen again"
+                  >
+                    Call again
+                  </Button>
                   <Button
                     variant="danger"
                     className="flex-1"
@@ -265,6 +284,13 @@ function DoctorPanel({
                     onClick={() => onStart(r.token_id)}
                   >
                     Start
+                  </Button>
+                  <Button
+                    disabled={pending}
+                    onClick={() => onAnnounce(r.token_id)}
+                    title="Announce this number on the waiting-room screen again"
+                  >
+                    Call again
                   </Button>
                   <Button
                     variant="danger"
