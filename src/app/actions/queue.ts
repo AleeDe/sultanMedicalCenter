@@ -25,6 +25,8 @@ export type QueueRow = {
   eta_minutes: number;
   is_emergency: boolean;
   recall_count: number;
+  /** When the patient was summoned. Null while still WAITING. */
+  called_at: string | null;
 };
 
 export type DoctorQueue = {
@@ -98,7 +100,7 @@ export async function getQueues(doctorId?: number): Promise<DoctorQueue[]> {
         sql<QueueRow[]>`
           select t.id as token_id, t.display_no, p.name as patient_name,
                  t.seq, t.status, t.priority, 0 as queue_pos, 0 as eta_minutes,
-                 ts.is_emergency, t.recall_count
+                 ts.is_emergency, t.recall_count, t.called_at
             from token t
             join visit v on v.id = t.visit_id
             join patient p on p.id = v.patient_id
