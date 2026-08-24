@@ -277,6 +277,25 @@ outside a transaction may land on different backends. `src/lib/db.ts` detects
 port 6543 and sets `prepare: false` automatically, so there is one thing to
 get right in the environment rather than three.
 
+### Which region
+
+`vercel.json` pins the functions to **`bom1` (Mumbai)**, because the Supabase
+project is in `ap-south-1` (Mumbai). They belong in the same region, and
+which region matters far less than that they match.
+
+Vercel defaults to `iad1` (Washington DC). On that default every query
+crossed the Atlantic and the Indian Ocean — roughly 220-260ms per round
+trip. Every page here is `force-dynamic` and issues several queries, and a
+cold request pays four more round trips for TCP, TLS and Postgres auth
+before the first query runs, so a single page load spent well over a second
+purely on distance. Moving the functions next to the data removes that cost
+rather than optimising around it.
+
+`vercel.json` cannot carry comments — its schema rejects unknown keys,
+including the `"//"` convention — which is why this is written here.
+
+**If the Supabase project is ever moved, move this with it.**
+
 ### Two things that differ from a plain Postgres
 
 Both were found by deploying, not by reading — and both fail *only* in

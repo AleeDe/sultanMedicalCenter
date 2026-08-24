@@ -1,24 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-
-  "//": [
-    "Run the functions in Mumbai, beside the database.",
-    "",
-    "Vercel defaults to iad1 (Washington DC). The Supabase project is in",
-    "ap-south-1 (Mumbai), so every query on that default crossed the",
-    "Atlantic and the Indian Ocean and back — roughly 220-260ms per round",
-    "trip. Pages here are force-dynamic and issue several queries each, so",
-    "that distance was paid over and over on a single page load, before the",
-    "connection handshake (TCP + TLS + Postgres auth = four more round",
-    "trips) was even counted.",
-    "",
-    "bom1 is Vercel's Mumbai region. Same city as the database, so the",
-    "round trip falls to single-digit milliseconds and the whole cost",
-    "largely disappears rather than being optimised around.",
-    "",
-    "If the Supabase project is ever moved, this must move with it. The two",
-    "belong in the same region; which region matters far less than that."
-  ],
   "regions": ["bom1"]
 }
