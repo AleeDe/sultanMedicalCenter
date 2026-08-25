@@ -23,12 +23,14 @@ import {
   IconStar,
   IconStethoscope,
 } from "@/components/icons";
-import { getPrintState, type PrintState } from "@/app/actions/print";
+import {
+  getPrintState,
+  reprintToken,
+  type PrintState,
+} from "@/app/actions/print";
 import type { ServiceRow } from "@/app/actions/ledger";
 import type { WaitPreview } from "@/app/actions/tokens";
 import { TIER_LABEL } from "@/lib/loyalty";
-import { tokenSlipBytes } from "@/lib/receipts";
-import { usePrinter } from "@/lib/use-printer";
 import { issueOffline } from "@/lib/offline/issue";
 import type {
   ClinicSetting,
@@ -1283,7 +1285,6 @@ function IssuedView({
   clinic: ClinicSetting;
   onNext: () => void;
 }) {
-  const printer = usePrinter();
   const [printState, setPrintState] = useState<PrintState | null>(null);
   const [printError, setPrintError] = useState<string | null>(null);
 
@@ -1318,17 +1319,23 @@ function IssuedView({
   */
   useEffect(() => {
     let live = true;
+
+    /*
+      Polled throughout, not stopped once the slip lands.
+
+      Stopping at PRINTED looked tidy and was wrong: "Print again" puts the
+      token back to PENDING, and a stopped poll would leave the screen saying
+      "printed" while the second slip was still on its way — or never came.
+      This screen is only up for one patient, so the cost is a handful of
+      cheap reads.
+    */
     const poll = async () => {
       const state = await getPrintState(receipt.unique_id).catch(() => null);
       if (!live || !state) return;
       setPrintState(state.status);
       setPrintError(state.error);
-      // Stop once it has settled: a printed slip does not un-print, and a
-      // failed one needs someone to act rather than another poll.
-      if (state.status === "PRINTED" || state.status === "FAILED") {
-        window.clearInterval(timer);
-      }
     };
+
     const timer = window.setInterval(poll, 1200);
     void poll();
     return () => {
@@ -1419,20 +1426,29 @@ function IssuedView({
           <Button variant="primary" size="xl" onClick={onNext}>
             Next Patient
           </Button>
+          {/* Queues rather than printing from here: this device may be a
+              tablet with no printer, and the agent at the counter is the only
+              thing that can reach one. The badge above then follows it to
+              paper, exactly as it does for the first print. */}
           <Button
             size="lg"
-            onClick={() =>
-              printer.print(tokenSlipBytes(receipt, clinic), () =>
-                window.print(),
-              )
-            }
+            onClick={() => {
+              setPrintState("PENDING");
+              setPrintError(null);
+              void reprintToken(receipt.unique_id).then((r) => {
+                if (!r.ok) {
+                  setPrintState("FAILED");
+                  setPrintError(r.error);
+                }
+              });
+            }}
+            disabled={printState === "PENDING" || printState === "CLAIMED"}
           >
             <IconPrinter className="h-[18px] w-[18px]" />
-            Print again
+            {printState === "PENDING" || printState === "CLAIMED"
+              ? "Printing…"
+              : "Print again"}
           </Button>
-          {printer.error && (
-            <p className="text-xs text-[var(--danger)]">{printer.error}</p>
-          )}
           <p className="text-xs text-muted">
             press <kbd>Enter</kbd> for the next patient
           </p>

@@ -56,6 +56,64 @@ export async function getSerialPorts(): Promise<SerialPortInfo[]> {
 export type PrintState = "PENDING" | "CLAIMED" | "PRINTED" | "FAILED";
 
 /**
+ * Whether a print agent is alive and keeping up.
+ *
+ * Inferred from the queue rather than asked of the agent directly: the agent
+ * holds no HTTP port, and what actually matters to reception is not "is a
+ * process running" but "are slips coming out". A token sitting PENDING for
+ * more than a few seconds means they are not, whatever the process is doing.
+ */
+export async function getAgentHealth(): Promise<{
+  healthy: boolean;
+  stuck: number;
+}> {
+  await requireReception();
+  const rows = await sql<{ stuck: number }[]>`
+    select count(*)::int as stuck
+      from token
+     where token_date = current_date
+       and print_status in ('PENDING', 'CLAIMED')
+       and issued_at < now() - interval '20 seconds'
+  `;
+  const stuck = rows[0]?.stuck ?? 0;
+  return { healthy: stuck === 0, stuck };
+}
+
+/**
+ * Puts a token back in the print queue.
+ *
+ * This is "Print again": the paper jammed, or the patient lost their slip and
+ * is standing at the counter. It queues rather than printing from here,
+ * because the device asking may be a tablet with no printer, and because the
+ * agent at the counter is the only thing that can reach one.
+ */
+export async function reprintToken(
+  uniqueId: string,
+): Promise<ActionResult<{ queued: true }>> {
+  await requireReception();
+
+  const rows = await sql<{ id: number }[]>`
+    update token
+       set print_status = 'PENDING',
+           printed_at   = null,
+           print_error  = null
+     where unique_id = ${uniqueId}
+       -- Today only. Reprinting an old token would send a patient who has
+       -- long gone to a room they are no longer expected in.
+       and token_date = current_date
+    returning id
+  `;
+
+  if (rows.length === 0) {
+    return {
+      ok: false,
+      error: "That token is not from today, so it cannot be reprinted.",
+    };
+  }
+  return { ok: true, data: { queued: true } };
+}
+
+/**
  * Where a token has got to on its way to paper.
  *
  * The issuing device no longer prints, so it cannot know the outcome itself —

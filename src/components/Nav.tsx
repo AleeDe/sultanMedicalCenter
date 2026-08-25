@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   IconBook,
   IconGear,
@@ -12,7 +12,7 @@ import {
   IconStethoscope,
   IconTicket,
 } from "@/components/icons";
-import { usePrinter } from "@/lib/use-printer";
+import { getAgentHealth } from "@/app/actions/print";
 import { SyncStatus } from "@/components/SyncStatus";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -64,8 +64,30 @@ function isActive(path: string, href: string) {
 
 export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
   const path = usePathname();
-  const { usbReady } = usePrinter();
   const [open, setOpen] = useState(false);
+  /*
+    Printing health, read from the queue rather than from this browser.
+
+    This chip used to report whether THIS machine had a USB printer attached,
+    which stopped meaning anything once printing moved to the agent at the
+    counter: a tablet would forever read "not set up" while its slips printed
+    perfectly. null while unknown, so it says nothing rather than guessing.
+  */
+  const [printOk, setPrintOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    const check = () =>
+      getAgentHealth()
+        .then((h) => live && setPrintOk(h.healthy))
+        .catch(() => live && setPrintOk(null));
+    void check();
+    const timer = window.setInterval(check, 15_000);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   /*
     The board and the doctor's screen own their own chrome.
@@ -149,9 +171,9 @@ export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
           <Link
             href="/admin"
             title={
-              usbReady
-                ? "Printer connected — slips print directly"
-                : "No USB printer — the browser print dialog will open. Click to set up."
+              printOk === false
+                ? "Slips are queuing but not printing. Check the print agent is running on the reception PC."
+                : "Slips print at the reception counter. Click for printer setup."
             }
             // A real target, not a decorative chip: it is a link to printer
             // setup, and on a tablet a 28px-tall control is a miss waiting to
@@ -159,14 +181,14 @@ export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
             style={{ minHeight: 44 }}
             className={`hidden items-center gap-1.5 rounded-full px-3
               text-xs font-semibold transition-colors sm:inline-flex ${
-                usbReady
-                  ? "bg-[var(--ok-soft)] text-[var(--ok)]"
+                printOk === false
+                  ? "bg-[var(--danger-soft)] text-[var(--danger)]"
                   : "bg-sunken text-muted hover:bg-[var(--hover)]"
               }`}
           >
             <IconPrinter className="h-4 w-4" />
             <span className="hidden lg:inline">
-              {usbReady ? "Printer ready" : "Printer not set up"}
+              {printOk === false ? "Not printing" : "Printer"}
             </span>
           </Link>
 
