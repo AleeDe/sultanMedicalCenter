@@ -88,6 +88,9 @@ export function WaitAccuracy() {
                     <th className="px-4 py-2.5 text-right font-semibold">
                       Suggested x
                     </th>
+                    <th className="px-4 py-2.5 text-right font-semibold">
+                      Overridden
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -125,6 +128,20 @@ export function WaitAccuracy() {
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-muted">
                           {r.suggested_mult}
+                        </td>
+                        {/*
+                          Muted unless it is high enough to matter: an
+                          occasional override is normal, a quarter of them is
+                          reception routinely disagreeing with the estimate.
+                        */}
+                        <td
+                          className={`px-4 py-3 text-right tabular-nums ${
+                            Number(r.override_pct) >= 20
+                              ? "font-bold text-[var(--gold)]"
+                              : "text-muted"
+                          }`}
+                        >
+                          {r.override_pct}%
                         </td>
                       </tr>
                     );

@@ -69,16 +69,24 @@ export async function signInAdmin(pin: string): Promise<SignInResult> {
 
 /** Doctor sign-in. Grants only that doctor's own queue. */
 export async function signInDoctor(
-  doctorId: number,
+  doctorId: number | string,
   pin: string,
 ): Promise<SignInResult> {
   const clean = pinShape(pin);
   if (!clean) return { ok: false, error: "PIN must be 4 to 6 digits." };
-  if (!Number.isInteger(doctorId) || doctorId < 1) {
+  /*
+    Coerced, not asserted. doctor.id is a bigint, which node-postgres returns
+    as a STRING to avoid silent precision loss, so the picker hands this "4"
+    rather than 4. Number.isInteger("4") is false, so the old guard rejected
+    EVERY doctor with "Unknown doctor." and the action 403'd — sign-in was
+    broken for all of them, not just an edge case.
+  */
+  const id = Number(doctorId);
+  if (!Number.isInteger(id) || id < 1) {
     return { ok: false, error: "Unknown doctor." };
   }
 
-  const r = await verifyDoctorPin(doctorId, clean);
+  const r = await verifyDoctorPin(id, clean);
   if (r.lockedSeconds > 0) {
     return { ok: false, error: lockMessage(r.lockedSeconds), lockedSeconds: r.lockedSeconds };
   }
@@ -86,7 +94,7 @@ export async function signInDoctor(
 
   await createSession({
     role: "DOCTOR",
-    doctorId,
+    doctorId: id,
     actor: r.name ?? "Doctor",
   });
   return { ok: true, role: "DOCTOR", isDefault: r.isDefault };

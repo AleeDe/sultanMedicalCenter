@@ -272,7 +272,15 @@ function Column({ q }: { q: DoctorQueue }) {
           far longer than an explained one. */}
       {q.state === "ON_BREAK" && (
         <p className="mb-4 rounded-2xl bg-amber-500/20 px-4 py-3 text-lg font-semibold text-amber-200">
-          Doctor on a short break
+          {/*
+            Only a reason marked public reaches this screen. "Namaz" reassures
+            a waiting room; "emergency case" alarms it and a personal reason is
+            nobody's business, so those stay on the staff screens and the
+            patients see the neutral wording instead.
+          */}
+          {q.breakReasonPublic && q.breakReason
+            ? `Doctor on a break · ${q.breakReason}`
+            : "Doctor on a short break"}
           {q.expectedReturnAt && (
             <>
               {" · back "}

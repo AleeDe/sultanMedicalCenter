@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import {
   issueToken,
-  lookupByPhone,
+  findPatients,
+  getPatientSummary,
+  previewWait,
   type ActionResult,
 } from "@/app/actions/tokens";
 import { TokenSlip } from "@/components/TokenSlip";
@@ -22,6 +24,7 @@ import {
   IconStethoscope,
 } from "@/components/icons";
 import type { ServiceRow } from "@/app/actions/ledger";
+import type { WaitPreview } from "@/app/actions/tokens";
 import { TIER_LABEL } from "@/lib/loyalty";
 import { tokenSlipBytes } from "@/lib/receipts";
 import { usePrinter } from "@/lib/use-printer";
@@ -31,6 +34,8 @@ import type {
   Doctor,
   Gender,
   PatientWithTier,
+  PatientMatchKind,
+  PatientSummary,
   Staff,
   TokenReceipt,
   TokenSeries,
@@ -90,6 +95,23 @@ export function NewTokenForm({
   const [forceNew, setForceNew] = useState(false);
   const [tier, setTier] = useState<PatientWithTier["tier"] | null>(null);
   const [lastVisit, setLastVisit] = useState<string | null>(null);
+  /*
+    The search box is deliberately NOT bound to form.phone any more. It takes
+    an MRN or a name too, and writing either of those into the patient's phone
+    column — which is what binding them together would do — corrupts the
+    record of every patient found by name.
+  */
+  const [query, setQuery] = useState("");
+  const [queryKind, setQueryKind] = useState<PatientMatchKind | null>(null);
+  const [summary, setSummary] = useState<PatientSummary | null>(null);
+  const [selectedMrn, setSelectedMrn] = useState<string | null>(null);
+  /*
+    The wait, mirrored on the fee override above it: null means "use what the
+    algorithm said", a string means reception typed over it. Kept as a string
+    so the field can be emptied while typing without snapping back to 0.
+  */
+  const [waitOverride, setWaitOverride] = useState<string | null>(null);
+  const [waitPreview, setWaitPreview] = useState<WaitPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<TokenReceipt | null>(null);
   const [picked, setPicked] = useState<ServiceRow[]>([]);
@@ -116,6 +138,32 @@ export function NewTokenForm({
     phoneRef.current?.focus();
   }, []);
 
+  /*
+    Keep the quoted wait in step with the doctor and the visit type, because
+    both change it: an emergency skips the queue, and each doctor has their
+    own pace and their own break.
+
+    Any manual override is dropped when they change — a "20" typed for Dr.
+    Khan is not a statement about Dr. Malik's queue, and silently carrying it
+    across would print a number nobody chose.
+  */
+  useEffect(() => {
+    let live = true;
+    const load = async () => {
+      if (doctorId === null) return null;
+      // Offline: resolve to null so the slip carries no wait, as before.
+      return previewWait(doctorId, emergency).catch(() => null);
+    };
+    load().then((w) => {
+      if (!live) return;
+      setWaitPreview(w);
+      setWaitOverride(null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [doctorId, emergency]);
+
   const submit = useCallback(() => {
     setError(null);
     startTransition(async () => {
@@ -129,17 +177,17 @@ export function NewTokenForm({
           clinic dead, and a duplicate patient record is a merge job later,
           not a crisis now.
         */
-        const found = await lookupByPhone(form.phone).catch(() => null);
-        if (found === null) {
+        const res = await findPatients(form.phone).catch(() => null);
+        if (res === null) {
           // fall through to issuing; the server reconciles on sync
-        } else if (found.length === 1) {
-          applyPatient(found[0]);
+        } else if (res.matches.length === 1) {
+          applyPatient(res.matches[0]);
           setError(
-            `${found[0].name} already uses this number (${found[0].mrn}). Details filled in — issue again to confirm.`,
+            `${res.matches[0].name} already uses this number (${res.matches[0].mrn}). Details filled in — issue again to confirm.`,
           );
           return;
-        } else if (found.length > 1) {
-          setMatches(found);
+        } else if (res.matches.length > 1) {
+          setMatches(res.matches);
           setError("Several patients use this number. Choose which one.");
           return;
         }
@@ -157,6 +205,10 @@ export function NewTokenForm({
         staffId,
         serviceIds: picked.map((p) => p.id),
         doctorId,
+        waitOverride:
+          waitOverride === null || waitOverride.trim() === ""
+            ? null
+            : Number(waitOverride),
       };
 
       /*
@@ -208,7 +260,7 @@ export function NewTokenForm({
     });
     // applyPatient is stable enough for this closure; deps kept explicit.
   }, [
-    form, forceNew, seriesId, fee, staffId, picked, doctorId,
+    form, forceNew, seriesId, fee, staffId, picked, doctorId, waitOverride,
     // Read only on the offline branch, but genuinely read — leaving them out
     // would let a stale doctor or series end up on a queued slip.
     active?.code, active?.label, emergency, doctor?.name, doctor?.room, tier,
@@ -240,16 +292,64 @@ export function NewTokenForm({
     setMatches([]);
     setForceNew(false);
     setError(null);
+    setSummary(null);
+    setSelectedMrn(p.mrn);
+
+    /*
+      The summary loads after the patient is already applied, not before. The
+      form must not sit blank waiting on a second round trip while the patient
+      stands at the counter — the details are the urgent part, the history is
+      the nice part.
+    */
+    startTransition(async () => {
+      const s = await getPatientSummary(p.id).catch(() => null);
+      if (!s) return;
+      setSummary(s);
+      /*
+        Pre-select the doctor they usually see. Only when reception has not
+        already chosen one — an explicit choice always outranks a guess.
+      */
+      setDoctorId((current) => {
+        if (current !== null) return current;
+        if (s.usual_doctor_id == null) return current;
+        /*
+          Guard against a doctor who has since been deactivated: they are not
+          in the picker, so selecting them would leave an invisible selection.
+
+          Compared with Number() on both sides because these ids are bigints
+          and arrive from the server as strings; "1" === 1 is false, and a
+          strict compare here silently disables the whole pre-select.
+        */
+        const match = doctors.find(
+          (d) => Number(d.id) === Number(s.usual_doctor_id),
+        );
+        return match ? match.id : current;
+      });
+    });
   }
 
-  function runLookup(phone: string) {
+  function runLookup(raw: string) {
+    const q = raw.trim();
+    if (!q) return;
     startTransition(async () => {
-      const found = await lookupByPhone(phone);
+      const { kind, matches: found } = await findPatients(q);
+      setQueryKind(kind);
       setMatches(found.length > 1 ? found : []);
-      if (found.length === 1) applyPatient(found[0]);
-      if (found.length === 0) {
+      if (found.length === 1) {
+        applyPatient(found[0]);
+      } else if (found.length === 0) {
         setTier(null);
         setLastVisit(null);
+        setSummary(null);
+        /*
+          Nothing found means this is a new patient. Seed whichever field the
+          search was actually for — a phone search should not leave reception
+          retyping the number they just typed — but never seed the phone from
+          an MRN or a name search, which would write nonsense into the record.
+        */
+        if (kind === "PHONE") {
+          setForm((f) => ({ ...f, phone: q, patientId: null }));
+        }
         nameRef.current?.focus();
       }
     });
@@ -257,6 +357,12 @@ export function NewTokenForm({
 
   function reset() {
     setForm(EMPTY);
+    setQuery("");
+    setQueryKind(null);
+    setSummary(null);
+    setSelectedMrn(null);
+    setWaitOverride(null);
+    setWaitPreview(null);
     setTier(null);
     setLastVisit(null);
     setMatches([]);
@@ -436,48 +542,141 @@ export function NewTokenForm({
                 );
               })}
             </div>
+            {/*
+              The wait, shown BEFORE the slip is printed rather than
+              discovered on it, and editable — the estimate cannot know that
+              the doctor just told reception they need forty minutes.
+
+              Only once a doctor is chosen, because the queue it describes is
+              that doctor's queue.
+            */}
+            {doctorId !== null && waitPreview && (
+              <Card className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 p-3.5">
+                <span className="text-sm font-medium text-muted">
+                  Quoted wait
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    value={waitOverride ?? String(waitPreview.minutes)}
+                    inputMode="numeric"
+                    aria-label="Quoted wait in minutes"
+                    onChange={(e) =>
+                      setWaitOverride(e.target.value.replace(/[^\d]/g, ""))
+                    }
+                    className="tnum h-11 w-20 text-lg font-bold"
+                  />
+                  <span className="text-sm text-muted">min</span>
+                </div>
+
+                {waitOverride === null ? (
+                  <Badge tone="neutral">auto</Badge>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setWaitOverride(null)}
+                    className="text-sm font-semibold text-[var(--accent)] underline"
+                  >
+                    Reset to {waitPreview.minutes}
+                  </button>
+                )}
+
+                {/*
+                  The reason the number is large. An unexplained jump from 12
+                  to 45 minutes is what reception gets shouted at for; the
+                  same number with "Namaz · back in 12 min" beside it is
+                  something they can repeat to the patient.
+                */}
+                {waitPreview.state === "ON_BREAK" && (
+                  <span className="flex items-center gap-1.5 rounded-[var(--r-sm)]
+                    bg-[var(--gold-soft)] px-2.5 py-1 text-sm font-semibold
+                    text-[var(--gold)]">
+                    {waitPreview.breakReason || "On a break"}
+                    {waitPreview.breakMinutesLeft > 0 &&
+                      ` · back in ${waitPreview.breakMinutesLeft} min`}
+                  </span>
+                )}
+                {waitPreview.state === "FINISHED" && (
+                  <span className="rounded-[var(--r-sm)] bg-[var(--danger-soft)]
+                    px-2.5 py-1 text-sm font-semibold text-[var(--danger)]">
+                    Finished for today
+                  </span>
+                )}
+              </Card>
+            )}
           </section>
 
           {/* 3 — who. Phone first: most patients are returning. */}
           <section>
             <GroupLabel step={3}>Patient</GroupLabel>
             <Card className="grid gap-3.5 p-4">
+              {/*
+                One box, three kinds of input. Reception should never have to
+                pick a search mode first: that is a keystroke on every patient
+                and the wrong mode under pressure.
+              */}
               <Field
-                label="Phone number"
-                htmlFor="phone"
-                hint="press Enter to search"
+                label="Find patient"
+                htmlFor="patient-search"
+                hint={
+                  queryKind
+                    ? `searched by ${queryKind.toLowerCase()}`
+                    : "MRN, phone or name — press Enter"
+                }
               >
                 <div className="flex gap-2">
                   <input
-                    id="phone"
+                    id="patient-search"
                     ref={phoneRef}
-                    value={form.phone}
-                    inputMode="tel"
+                    value={query}
                     autoComplete="off"
-                    placeholder="03xx-xxxxxxx"
+                    placeholder="BT-260825-0417  ·  03xx-xxxxxxx  ·  name"
                     onChange={(e) => {
-                      setForm({ ...form, phone: e.target.value, patientId: null });
+                      setQuery(e.target.value);
+                      setQueryKind(null);
+                      // Typing a new search abandons the previously chosen
+                      // patient: silently keeping the old patientId is how a
+                      // token gets issued against the wrong person.
+                      setForm((f) => ({ ...f, patientId: null }));
                       setTier(null);
                       setLastVisit(null);
+                      setSummary(null);
+                      setSelectedMrn(null);
                       setForceNew(false);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        runLookup(form.phone);
+                        runLookup(query);
                       }
                     }}
-                    className="tnum text-[15px]"
+                    className="text-[15px]"
                   />
                   <Button
-                    onClick={() => runLookup(form.phone)}
-                    disabled={pending || form.phone.trim().length < 4}
+                    onClick={() => runLookup(query)}
+                    disabled={pending || query.trim().length < 3}
                     className="shrink-0 px-5"
                   >
                     <IconSearch className="h-[18px] w-[18px]" />
                     Search
                   </Button>
                 </div>
+              </Field>
+
+              {/*
+                Phone is now its own field. It used to double as the search
+                box, which meant an MRN or a name search wrote itself into the
+                patient's phone column.
+              */}
+              <Field label="Phone number" htmlFor="phone">
+                <input
+                  id="phone"
+                  value={form.phone}
+                  inputMode="tel"
+                  autoComplete="off"
+                  placeholder="03xx-xxxxxxx"
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  className="tnum text-[15px]"
+                />
               </Field>
 
               {/* Recognition banner — the payoff of the lookup, stated plainly. */}
@@ -501,6 +700,10 @@ export function NewTokenForm({
                 </div>
               )}
 
+              {form.patientId && summary && (
+                <PatientHistory summary={summary} mrn={selectedMrn} />
+              )}
+
               {matches.length > 1 && (
                 <div className="animate-rise overflow-hidden rounded-[var(--r-sm)] border border-[var(--line-strong)]">
                   {matches.map((m) => (
@@ -514,7 +717,13 @@ export function NewTokenForm({
                     >
                       <span className="min-w-0">
                         <span className="block truncate font-semibold">{m.name}</span>
-                        <span className="tnum text-xs text-muted">{m.mrn}</span>
+                        {/* Gender and age are what actually separate two
+                            family members on one number; the MRN alone does
+                            not tell reception which one is standing there. */}
+                        <span className="tnum text-xs text-muted">
+                          {m.mrn} · {m.gender.charAt(0)}
+                          {m.age_years != null && ` ${m.age_years}`}
+                        </span>
                       </span>
                       <span className="tnum shrink-0 text-xs text-muted">
                         {m.visit_count} visits
@@ -1177,4 +1386,94 @@ function CounterPicker({
       </select>
     </label>
   );
+}
+
+/*
+  The recognition payoff. A returning patient should be greeted with what the
+  clinic already knows — "Dr. Khan again?" — instead of being asked the same
+  questions as a stranger.
+
+  Deliberately compact: this sits above the fold on the reception screen, and
+  a card that pushes the Issue button off-screen would cost more than the
+  history is worth. Three visits, not ten.
+*/
+function PatientHistory({
+  summary,
+  mrn,
+}: {
+  summary: PatientSummary;
+  mrn: string | null;
+}) {
+  return (
+    <div className="animate-rise rounded-[var(--r-sm)] border border-[var(--line)] bg-sunken">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-[var(--line)] px-3.5 py-2.5">
+        {mrn && <span className="tnum text-sm font-semibold">{mrn}</span>}
+        <span className="tnum text-xs text-muted">
+          {summary.visit_count} visit{summary.visit_count === 1 ? "" : "s"}
+        </span>
+        {summary.last_seen && (
+          <span className="text-xs text-muted">
+            last seen {formatDay(summary.last_seen)} ({sinceDays(summary.last_seen)})
+          </span>
+        )}
+        {summary.usual_doctor_name && (
+          <span className="text-xs text-muted">
+            usually {summary.usual_doctor_name}
+          </span>
+        )}
+      </div>
+
+      {summary.recent.length > 0 && (
+        <ul className="px-3.5 py-2">
+          {summary.recent.map((v) => (
+            <li
+              key={v.visit_id}
+              className="flex items-baseline justify-between gap-3 py-0.5 text-xs"
+            >
+              <span className="tnum shrink-0 text-muted">
+                {formatDay(v.visit_date)}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-right">
+                {v.doctor_name ?? "—"}
+                <span className="text-muted"> · {v.series_label}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// Dates come from Postgres as YYYY-MM-DD. Parsed by parts, never through
+// new Date("YYYY-MM-DD"), which is treated as UTC and renders as the previous
+// day for every clinic east of Greenwich — including this one.
+function parseDay(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function formatDay(iso: string): string {
+  return parseDay(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function sinceDays(iso: string): string {
+  const then = parseDay(iso);
+  const now = new Date();
+  const days = Math.round(
+    (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
+      then.getTime()) /
+      86_400_000,
+  );
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days} days ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+  const years = Math.round(days / 365);
+  return `${years} year${years === 1 ? "" : "s"} ago`;
 }

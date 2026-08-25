@@ -27,6 +27,35 @@ export type PatientWithTier = Patient & {
   tier: LoyaltyTier;
 };
 
+/**
+ * What reception sees the moment they pick a returning patient. Everything
+ * here is derived from visit history — none of it is an editable column, so
+ * it cannot drift out of step with what actually happened.
+ */
+export type PatientSummary = {
+  visit_count: number;         // lifetime, not the 12-month tier window
+  first_seen: string | null;
+  last_seen: string | null;
+  usual_doctor_id: number | null;
+  usual_doctor_name: string | null;
+  recent: RecentVisit[];
+};
+
+export type RecentVisit = {
+  visit_id: number;
+  visit_date: string;
+  doctor_name: string | null;
+  series_label: string;
+};
+
+/** How a search box entry was interpreted, so the UI can say so. */
+export type PatientMatchKind = "MRN" | "PHONE" | "NAME";
+
+export type PatientSearchResult = {
+  kind: PatientMatchKind;
+  matches: PatientWithTier[];
+};
+
 export type IssuedToken = {
   token_id: number;
   visit_id: number;
