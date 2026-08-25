@@ -1,7 +1,6 @@
 "use server";
 
 import { z } from "zod";
-import type postgres from "postgres";
 import { sql } from "@/lib/db";
 import { requireReception } from "@/lib/auth";
 import { tierFor } from "@/lib/loyalty";
@@ -304,194 +303,58 @@ export async function issueToken(
   const v = parsed.data;
 
   try {
-    return await sql.begin(async (tx) => {
-      let patientId = v.patientId;
+    /*
+      Two round trips, not fifteen.
 
-      if (patientId) {
-        // Returning patient: refresh details in case reception corrected them.
-        await tx`
-          update patient
-             set name = ${v.name}, phone = ${v.phone}, gender = ${v.gender},
-                 age_years = ${v.age}, address = ${v.address}
-           where id = ${patientId}
-        `;
-      } else {
-        const [{ next_mrn: mrn }] = await tx<{ next_mrn: string }[]>`
-          select next_mrn()
-        `;
-        const [created] = await tx<{ id: number }[]>`
-          insert into patient (mrn, name, phone, gender, age_years, address)
-          values (${mrn}, ${v.name}, ${v.phone}, ${v.gender}, ${v.age},
-                  ${v.address})
-          returning id
-        `;
-        patientId = created.id;
-      }
+      This used to run the patient upsert, the MRN, issue_token, the series
+      lookup, the fee line, ONE INSERT PER LAB, the patient re-read, the visit
+      count, the audit row, the doctor lookup, the wait estimate, the wait
+      write and the priority write as separate statements inside one
+      transaction. Locally that is ~15ms and invisible; against the pooler in
+      Mumbai it is 40-80ms EACH — about a second of pure network before any
+      work happens, growing with every lab test added.
 
-      const [tok] = await tx<
-        {
-          token_id: number;
-          visit_id: number;
-          display_no: string;
-          unique_id: string;
-          seq: number;
-          token_date: string;
-          issued_at: string;
-        }[]
-      >`select * from issue_token(${patientId}, ${v.seriesId}, ${v.staffId},
-                                  ${v.doctorId})`;
+      Both calls are single statements, so each is its own transaction and
+      neither holds one open across a network wait.
+    */
+    const [{ issue_token_full: r }] = await sql<
+      { issue_token_full: RawReceipt }[]
+    >`
+      select issue_token_full(
+        upsert_patient(${v.patientId}, ${v.name}, ${v.phone}, ${v.gender},
+                       ${v.age}, ${v.address}),
+        ${v.seriesId}, ${v.staffId}, ${v.doctorId},
+        ${sql.array(v.serviceIds)}::bigint[], ${v.waitOverride},
+        -- Resolved in the same statement rather than a second trip just to
+        -- turn a staff id into a name for the audit row.
+        coalesce((select name from staff where id = ${v.staffId}), 'Reception')
+      )
+    `;
 
-      // The consultation fee is the first ledger line, marked PAID because it
-      // is collected at the counter before the token is handed over.
-      //
-      // The price is read HERE, from the series, not taken from the request.
-      // The client used to send the fee and the server trusted it, so a
-      // crafted request could record an Emergency token as paid zero (TG-03).
-      // The services below always did this correctly; the consultation fee
-      // now matches them.
-      const [series] = await tx<
-        { code: string; label: string; is_emergency: boolean; base_fee: string }[]
-      >`select code, label, is_emergency, base_fee
-          from token_series where id = ${v.seriesId}`;
+    const receipt: TokenReceipt = {
+      token_id: r.token_id,
+      visit_id: r.visit_id,
+      display_no: r.display_no,
+      unique_id: r.unique_id,
+      seq: r.seq,
+      token_date: r.token_date,
+      issued_at: r.issued_at,
+      patient_name: r.patient_name,
+      mrn: r.mrn,
+      gender: r.gender,
+      age_years: r.age_years,
+      series_label: r.series_label,
+      is_emergency: r.is_emergency,
+      doctor_name: r.doctor_name ?? null,
+      doctor_room: r.doctor_room ?? null,
+      wait_minutes: r.wait_minutes ?? null,
+      fee: r.fee,
+      lines: r.lines,
+      total: r.total,
+      tier: tierFor(r.visit_count) as LoyaltyTier,
+    };
 
-      const fee = Number(series.base_fee);
-
-      await tx`
-        insert into visit_item (visit_id, service_id, name_snapshot,
-                                unit_price_snapshot, qty, status, added_by)
-        values (${tok.visit_id}, null, ${series.label + " Fee"}, ${fee}, 1,
-                'PAID', ${v.staffId})
-      `;
-
-      // Labs chosen at the counter. Prices are snapshotted from the catalogue
-      // in this same transaction, so a later price change cannot rewrite this
-      // slip, and they are PAID because the patient settles everything now.
-      const lines: ReceiptLine[] = [
-        { name: `${series.label} Fee`, amount: fee.toFixed(2) },
-      ];
-
-      if (v.serviceIds.length > 0) {
-        const chosen = await tx<
-          { id: number; name: string; price: string }[]
-        >`select id, name, price from service
-           where id in ${tx(v.serviceIds)} and active`;
-
-        for (const s of chosen) {
-          await tx`
-            insert into visit_item (visit_id, service_id, name_snapshot,
-                                    unit_price_snapshot, qty, status, added_by)
-            values (${tok.visit_id}, ${s.id}, ${s.name}, ${s.price}, 1,
-                    'PAID', ${v.staffId})
-          `;
-          lines.push({ name: s.name, amount: Number(s.price).toFixed(2) });
-        }
-      }
-
-      const total = lines.reduce((sum, l) => sum + Number(l.amount), 0);
-
-      const [patient] = await tx<
-        {
-          mrn: string;
-          name: string;
-          gender: "MALE" | "FEMALE" | "OTHER";
-          age_years: number | null;
-        }[]
-      >`select mrn, name, gender, age_years from patient where id = ${patientId}`;
-
-      const [{ count }] = await tx<{ count: number }[]>`
-        select count(*)::int as count from visit
-         where patient_id = ${patientId}
-           and opened_at > now() - interval '12 months'
-      `;
-
-      const actor = await actorName(tx, v.staffId);
-      const detail = tx.json({
-        display_no: tok.display_no,
-        fee,
-        labs: lines.length - 1,
-        total,
-        patient: patient.mrn,
-      });
-
-      await tx`
-        insert into audit_log (actor, action, entity, entity_id, after)
-        values (${actor}, 'ISSUE_TOKEN', 'token', ${String(tok.token_id)},
-                ${detail})
-      `;
-
-      const [doctor] = v.doctorId
-        ? await tx<{ name: string; room: string }[]>`
-            select name, room from doctor where id = ${v.doctorId}
-          `
-        : [undefined];
-
-      /*
-        The wait quoted on the slip.
-
-        Computed AFTER the token exists so this patient counts themselves in
-        the queue, and stored immutably: it is what was printed, so it is
-        what we are accountable to. Comparing it with the actual wait later
-        is the only way to tune the estimate against this clinic.
-      */
-      let waitMinutes: number | null = null;
-      let predicted: number | null = null;
-      let overridden = false;
-
-      if (v.doctorId) {
-        const [w] = await tx<{ estimate_wait_minutes: number }[]>`
-          select estimate_wait_minutes(${v.doctorId},
-                 ${series.is_emergency ? 10 : 0}::smallint)
-        `;
-        predicted = w?.estimate_wait_minutes ?? null;
-
-        /*
-          What gets PRINTED is the override when there is one; what gets
-          MEASURED is always the algorithm's own number.
-
-          Both are written. predicted_wait_min keeps feeding wait_accuracy()
-          as it always did, and wait_overridden lets that function drop this
-          row from the tuning sample — otherwise a receptionist's guess would
-          be averaged in with real measurements and quietly move the
-          suggested multiplier.
-        */
-        overridden = v.waitOverride !== null && v.waitOverride !== predicted;
-        waitMinutes = v.waitOverride ?? predicted;
-
-        if (predicted !== null || waitMinutes !== null) {
-          await tx`
-            update token
-               set predicted_wait_min = ${predicted},
-                   quoted_wait_min = ${waitMinutes},
-                   wait_overridden = ${overridden}
-             where id = ${tok.token_id}
-          `;
-        }
-      }
-
-      // Emergency tokens carry priority so the queue orders them first.
-      if (series.is_emergency) {
-        await tx`update token set priority = 10 where id = ${tok.token_id}`;
-      }
-
-      const receipt: TokenReceipt = {
-        ...tok,
-        patient_name: patient.name,
-        mrn: patient.mrn,
-        gender: patient.gender,
-        age_years: patient.age_years,
-        series_label: series.label,
-        is_emergency: series.is_emergency,
-        doctor_name: doctor?.name ?? null,
-        doctor_room: doctor?.room || null,
-        wait_minutes: waitMinutes,
-        fee: fee.toFixed(2),
-        lines,
-        total: total.toFixed(2),
-        tier: tierFor(count) as LoyaltyTier,
-      };
-
-      return { ok: true as const, data: receipt };
-    });
+    return { ok: true, data: receipt };
   } catch (err) {
     console.error("issueToken failed", err);
     return {
@@ -502,12 +365,27 @@ export async function issueToken(
   }
 }
 
-type Tx = postgres.TransactionSql<Record<string, never>>;
+/** The JSON shape issue_token_full() returns. */
+type RawReceipt = {
+  token_id: number;
+  visit_id: number;
+  display_no: string;
+  unique_id: string;
+  seq: number;
+  token_date: string;
+  issued_at: string;
+  patient_name: string;
+  mrn: string;
+  gender: "MALE" | "FEMALE" | "OTHER";
+  age_years: number | null;
+  series_label: string;
+  is_emergency: boolean;
+  doctor_name: string | null;
+  doctor_room: string | null;
+  wait_minutes: number | null;
+  fee: string;
+  lines: ReceiptLine[];
+  total: string;
+  visit_count: number;
+};
 
-async function actorName(tx: Tx, staffId: number | null): Promise<string> {
-  if (!staffId) return "Reception";
-  const [row] = await tx<{ name: string }[]>`
-    select name from staff where id = ${staffId}
-  `;
-  return row?.name ?? "Reception";
-}
