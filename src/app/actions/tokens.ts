@@ -43,6 +43,19 @@ const issueSchema = z.object({
     into the database so the accuracy tuning is never polluted by a guess.
   */
   waitOverride: z.coerce.number().int().min(0).max(600).nullable().default(null),
+  /*
+    The estimate reception was actually looking at when they pressed Issue.
+
+    NOT an override: it is the algorithm's own number, just read a few seconds
+    earlier. Sending it means the slip prints the wait the patient was told at
+    the counter instead of one recomputed after their own token joined the
+    queue — which is what made the screen say 7 and the paper say 14.
+
+    Deliberately separate from waitOverride so wait_overridden stays false and
+    these rows keep feeding wait_accuracy(); treating a stale-by-seconds
+    estimate as a manual override would empty the tuning sample.
+  */
+  waitShown: z.coerce.number().int().min(0).max(600).nullable().default(null),
 });
 
 export type IssueTokenInput = z.input<typeof issueSchema>;
@@ -327,7 +340,8 @@ export async function issueToken(
         ${sql.array(v.serviceIds)}::bigint[], ${v.waitOverride},
         -- Resolved in the same statement rather than a second trip just to
         -- turn a staff id into a name for the audit row.
-        coalesce((select name from staff where id = ${v.staffId}), 'Reception')
+        coalesce((select name from staff where id = ${v.staffId}), 'Reception'),
+        ${v.waitShown}
       )
     `;
 
