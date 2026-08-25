@@ -1,5 +1,7 @@
 // Applies supabase/migrations/*.sql in filename order, once each.
-// Usage: node --env-file=.env.local scripts/migrate.mjs
+//
+//   npm run migrate        -> local  (.env.local)
+//   npm run migrate:prod   -> LIVE   (.env.production.local)
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import postgres from "postgres";
@@ -11,6 +13,36 @@ if (!url) {
   console.error("DATABASE_URL is not set. See .env.example.");
   process.exit(1);
 }
+
+/*
+  Say which database this is about to touch.
+
+  Both commands print the same twenty lines, and "npm run migrate" against a
+  fully-migrated local database looks identical to a successful production
+  run — twenty skips and "Already up to date." That is how a production
+  migration gets believed to have happened when it never did, so the target
+  is stated up front rather than inferred from which command was typed.
+
+  The password is never printed.
+*/
+const target = (() => {
+  try {
+    const u = new URL(url);
+    const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname);
+    return {
+      label: `${u.hostname}:${u.port || 5432}${u.pathname}`,
+      live: !local,
+    };
+  } catch {
+    return { label: "(unparseable DATABASE_URL)", live: false };
+  }
+})();
+
+console.log(
+  `
+  ${target.live ? "LIVE" : "local"}  ${target.label}
+`,
+);
 
 const sql = postgres(url, { max: 1 });
 
