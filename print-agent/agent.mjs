@@ -130,7 +130,28 @@ async function loadClinic() {
       from clinic_setting
      limit 1
   `;
-  return rows[0] ?? null;
+  if (!rows[0]) return null;
+
+  /*
+    Paper width belongs to the printer, not the database.
+
+    clinic_setting.paper_width is one value shared by every device, but the
+    roll is a property of the machine this agent is standing next to — a
+    second counter may well have the other size. When they disagree the slip
+    does not fail, it silently prints an 80-column layout onto 58mm paper and
+    every line wraps: "NORM-00518" comes out as "NORM-0051" then "8".
+
+    So the width can be fixed to this printer: PRINT_AGENT_BAKED_PAPER is set
+    when the .exe is built (the clinic has no environment to set), and
+    PRINT_AGENT_PAPER overrides it when running from the repo.
+  */
+  const override = Number(
+    process.env.PRINT_AGENT_PAPER || process.env.PRINT_AGENT_BAKED_PAPER,
+  );
+  if (override === 58 || override === 80) {
+    return { ...rows[0], paper_width: override };
+  }
+  return rows[0];
 }
 
 let printing = false;
@@ -220,10 +241,49 @@ async function installToStartup() {
 
   await mkdir(home, { recursive: true });
 
-  // Skip the copy when already running from the install location, which is
-  // what happens on every boot from here on.
+  /*
+    Copy in, unless already running from there — which is every boot after the
+    first.
+
+    A copy already running holds a lock on the file, so installing a newer .exe
+    over it fails with EBUSY and the startup entry is then pointing at a
+    half-replaced binary that will not launch. Stopping the old one first is
+    what makes "double-click the new version" work the way anyone would expect.
+  */
   if (path.resolve(process.execPath) !== path.resolve(installed)) {
-    await copyFile(process.execPath, installed);
+    try {
+      await copyFile(process.execPath, installed);
+    } catch (error) {
+      if (error.code !== "EBUSY" && error.code !== "EPERM") throw error;
+
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const run = promisify(execFile);
+
+      console.log("   An older copy is running. Stopping it first...");
+      /*
+        By PID, never by image name: this process is also TokenPrinter.exe, so
+        `taskkill /IM` would kill the installer along with the thing it is
+        replacing, leaving the copy half-done and nothing running.
+      */
+      // PowerShell rather than wmic, which is deprecated and absent from
+      // recent Windows 11 installs.
+      const { stdout } = await run("powershell", [
+        "-NoProfile", "-Command",
+        "Get-Process TokenPrinter -ErrorAction SilentlyContinue | " +
+          "Select-Object -ExpandProperty Id",
+      ]).catch(() => ({ stdout: "" }));
+
+      for (const line of stdout.split(/\r?\n/)) {
+        const pid = Number(line.trim());
+        if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
+          await run("taskkill", ["/F", "/PID", String(pid)]).catch(() => {});
+        }
+      }
+      // Windows releases the lock a moment after the process goes.
+      await new Promise((r) => setTimeout(r, 1500));
+      await copyFile(process.execPath, installed);
+    }
   }
 
   if (!existsSync(startup)) return { installed, shortcut: null };

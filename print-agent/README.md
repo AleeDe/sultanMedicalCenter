@@ -38,8 +38,17 @@ also delete "Token Printer.vbs" from the folder that opens with
 ## Building that .exe
 
 ```bash
-npm run build:exe        # -> dist/TokenPrinter.exe
+npm run build:exe                          # 58mm paper (default)
+PRINT_AGENT_PAPER=80 npm run build:exe     # 80mm paper
 ```
+
+Output: `dist/TokenPrinter.exe`. The build prints the paper width it used.
+
+Paper size is fixed at build time rather than read from `clinic_setting`,
+because that is one value shared by every device while the roll belongs to the
+machine the agent runs on. Getting it wrong does not fail loudly — an
+80-column layout on 58mm paper prints every line wrapped, so "NORM-00518"
+comes out as "NORM-0051" then "8".
 
 The production `DATABASE_URL` is read from `.env.production.local` at build
 time and baked into the binary, which is what lets the clinic configure

@@ -65,7 +65,22 @@ const shown = (() => {
     return "(unparseable)";
   }
 })();
+/*
+  The paper size of the printer this .exe is being built for.
+
+  Not read from clinic_setting, because that is one value shared by every
+  device while the roll belongs to the machine the agent runs on. Getting it
+  wrong does not fail — it prints an 80-column layout onto 58mm paper and
+  every line wraps — so it is stated at build time and shown below.
+*/
+const paper = Number(process.env.PRINT_AGENT_PAPER ?? 58);
+if (paper !== 58 && paper !== 80) {
+  console.error(`Paper width must be 58 or 80, not ${paper}.`);
+  process.exit(1);
+}
+
 console.log(`[build-exe] baking in database: ${shown}`);
+console.log(`[build-exe] paper width: ${paper}mm`);
 if (/localhost|127\.0\.0\.1/.test(shown)) {
   console.warn(
     "[build-exe] WARNING: this is a LOCAL database. The clinic's PC cannot\n" +
@@ -226,6 +241,7 @@ await build({
     // Baked here rather than read from the environment: the clinic PC has no
     // .env file and nobody there should have to make one.
     "process.env.PRINT_AGENT_BAKED_DB": JSON.stringify(dbUrl),
+    "process.env.PRINT_AGENT_BAKED_PAPER": JSON.stringify(paper),
   },
   logLevel: "warning",
 });
