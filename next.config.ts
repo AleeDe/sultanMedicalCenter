@@ -55,6 +55,16 @@ const nextConfig: NextConfig = {
   },
 
   /*
+    serialport is a native addon: it loads a compiled .node binary at runtime.
+    Bundling it breaks that load, and because src/lib/serial-printer.ts treats
+    an import failure as "no printer on this machine", the breakage surfaced as
+    the browser print dialog appearing instead of a slip — a silent fallback,
+    with the real cause only in the server log. Kept external so Node requires
+    it from node_modules directly.
+  */
+  serverExternalPackages: ["serialport"],
+
+  /*
     Server Action origin allowlist (TG-06).
 
     Next already rejects a Server Action whose Origin does not match the Host,
@@ -71,6 +81,10 @@ const nextConfig: NextConfig = {
     serverActions: {
       allowedOrigins: [
         "localhost:3000",
+        // next dev moves to 3001 when 3000 is already taken — a stale dev
+        // server left running is enough to cause it. Without this entry every
+        // Server Action on that port is rejected, printing included.
+        "localhost:3001",
         "sultan-medical-center.vercel.app",
       ],
     },

@@ -27,7 +27,7 @@ import type { ServiceRow } from "@/app/actions/ledger";
 import type { WaitPreview } from "@/app/actions/tokens";
 import { TIER_LABEL } from "@/lib/loyalty";
 import { tokenSlipBytes } from "@/lib/receipts";
-import { usePrinter } from "@/lib/use-printer";
+import { usePrinter, type PrintMode } from "@/lib/use-printer";
 import { issueOffline } from "@/lib/offline/issue";
 import type {
   ClinicSetting,
@@ -1283,11 +1283,11 @@ function IssuedView({
   onNext: () => void;
 }) {
   const printer = usePrinter();
-  const [mode, setMode] = useState<"usb" | "browser" | null>(null);
+  const [mode, setMode] = useState<PrintMode | null>(null);
 
   /*
-    Print once, automatically. USB when a printer is connected — no driver,
-    no dialog — otherwise the browser's print path as a fallback.
+    Print once, automatically. usePrinter picks the route: the serial printer
+    on the server's COM port, else WebUSB, else the browser dialog.
 
     Two traps this avoids, both of which silently printed nothing:
      * `printer` is a new object every render, so depending on it re-ran the
@@ -1333,7 +1333,9 @@ function IssuedView({
         <Badge tone="ok">
           <IconCheck className="h-3.5 w-3.5" />
           Token issued
-          {mode === "usb" ? " · printed" : mode ? " · printing" : " · printing"}
+          {/* Serial and USB both complete before this renders; the browser
+              route only hands off to a dialog, so it is still "printing". */}
+          {mode === "serial" || mode === "usb" ? " · printed" : " · printing"}
         </Badge>
 
         <p
