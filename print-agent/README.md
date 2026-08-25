@@ -21,35 +21,48 @@ It also survives the app being served from Vercel: that server sits in a data
 centre with no printer attached, so something inside the clinic has to do the
 printing.
 
-## Running it
+## What the clinic gets
+
+One file: **`TokenPrinter.exe`**. Nothing else — no Node, no npm, no config
+file, no terminal, and no copy of this repository.
+
+Put it on the reception PC and double-click it once. It copies itself to
+AppData, registers to start with Windows, finds the printer, and begins
+printing. From then on it runs in the background with no window, and starts
+again by itself whenever the PC does.
+
+To stop it: end `TokenPrinter.exe` in Task Manager. To stop it permanently,
+also delete "Token Printer.vbs" from the folder that opens with
+`Win + R` -> `shell:startup`.
+
+## Building that .exe
+
+```bash
+npm run build:exe        # -> dist/TokenPrinter.exe
+```
+
+The production `DATABASE_URL` is read from `.env.production.local` at build
+time and baked into the binary, which is what lets the clinic configure
+nothing. The build prints which database it used — check it says the
+production host and not localhost, because an .exe built against the dev
+database runs, connects, and never prints a real token.
+
+**The credential is extractable from the .exe by anyone holding it.** That is
+acceptable on the reception PC, whose staff already have access to the data.
+It is not acceptable in email, chat, or anywhere public. If a copy leaks,
+rotate the database password and rebuild.
+
+`dist/` is gitignored for the same reason.
+
+## Running from the repo instead
+
+For development, with `DATABASE_URL` in `.env.local`:
 
 ```bash
 npm run print-agent
 ```
 
-Expected output:
-
-```
-[print-agent] watching the queue every 2000ms
-[print-agent] printer on COM7 @ 9600 baud
-```
-
-Leave it running while the clinic is open. Tokens issued while it is stopped
-stay queued and print when it starts again — nothing is lost, it just waits.
-
-## Starting it automatically
-
-Double-click **`print-agent\install-startup.bat`** once on the reception PC.
-
-It registers the agent to start with Windows and starts it immediately, so no
-reboot is needed. From then on staff never type a command — the PC starts,
-the agent starts.
-
-It runs with no console window, deliberately: a visible one invites someone to
-close it, and printing would stop silently.
-
-To undo, press `Win + R`, type `shell:startup`, and delete
-"TokenGenerator print agent.vbs" from the folder that opens.
+This keeps the console window and does not install anything.
 
 ## After changing the slip layout
 

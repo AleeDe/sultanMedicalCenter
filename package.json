@@ -21,7 +21,8 @@
     "test:db": "node scripts/test-db.mjs",
     "test:seeded": "node scripts/test-seeded.mjs",
     "print-agent": "node --env-file=.env.local print-agent/agent.mjs",
-    "build:slip": "node print-agent/build-slip.mjs"
+    "build:slip": "node print-agent/build-slip.mjs",
+    "build:exe": "node print-agent/build-exe.mjs"
   },
   "dependencies": {
     "next": "16.3.1",

@@ -52,3 +52,6 @@ supabase/.temp/
 # Written by print-agent/install-startup.bat on each reception PC — the
 # paths inside are machine-specific, so it is generated rather than committed.
 print-agent/run-agent.vbs
+
+# The client-facing .exe, rebuilt on demand and containing a live credential.
+dist/

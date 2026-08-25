@@ -36,14 +36,28 @@ const FIXED_PORT = process.env.PRINT_AGENT_COM ?? null;
     fails to print is stuck until requeue_stale_prints() releases it. */
 const BATCH = Number(process.env.PRINT_AGENT_BATCH ?? 3);
 
-const url = process.env.DATABASE_URL;
+/*
+  The database, from whichever source applies.
+
+  PRINT_AGENT_BAKED_DB is substituted at build time by print-agent/build-exe.mjs
+  and is how the packaged .exe knows where to connect — the clinic's PC has no
+  .env file and nobody there should have to make one. DATABASE_URL still wins
+  when set, so running from the repo during development behaves as before.
+*/
+const url = process.env.DATABASE_URL || process.env.PRINT_AGENT_BAKED_DB;
 if (!url) {
   console.error(
-    "DATABASE_URL is not set.\n" +
-      "Copy .env.example to .env.local and add the connection string, then run again.",
+    "No database configured.\n" +
+      "From the repo: set DATABASE_URL in .env.local.\n" +
+      "This is a bug if you are seeing it from the packaged .exe.",
   );
   process.exit(1);
 }
+
+/** True when running as the packaged .exe rather than from the repo. Used to
+    decide whether to offer installation and hold the window open — behaviour
+    that would only get in the way during development. */
+const PACKAGED = Boolean(process.pkg) || /TokenPrinter/i.test(process.execPath);
 
 const sql = postgres(url, {
   max: 2,
@@ -180,23 +194,137 @@ async function tick(clinic) {
   }
 }
 
-async function main() {
-  const clinic = await loadClinic();
-  if (!clinic) {
-    console.error("No clinic_setting row found. Run the migrations first.");
-    process.exit(1);
+/*
+  Register the .exe to start with Windows, and copy it somewhere stable.
+
+  Run from Downloads, the shortcut would break the moment someone tidied that
+  folder up — so the executable is copied to the user's AppData first and the
+  shortcut points there. Both steps are per-user, needing no administrator
+  rights, which matters on a clinic PC where staff rarely have them.
+
+  Idempotent: running it a second time refreshes both rather than complaining.
+*/
+async function installToStartup() {
+  const { copyFile, mkdir, writeFile } = await import("node:fs/promises");
+  const { existsSync } = await import("node:fs");
+  const path = await import("node:path");
+  const os = await import("node:os");
+
+  const home = path.join(os.homedir(), "AppData", "Local", "TokenPrinter");
+  const installed = path.join(home, "TokenPrinter.exe");
+  const startup = path.join(
+    os.homedir(),
+    "AppData", "Roaming", "Microsoft", "Windows",
+    "Start Menu", "Programs", "Startup",
+  );
+
+  await mkdir(home, { recursive: true });
+
+  // Skip the copy when already running from the install location, which is
+  // what happens on every boot from here on.
+  if (path.resolve(process.execPath) !== path.resolve(installed)) {
+    await copyFile(process.execPath, installed);
   }
 
-  const path = await detectPort();
-  console.log(`[print-agent] watching the queue every ${POLL_MS}ms`);
-  console.log(
-    path
-      ? `[print-agent] printer on ${path} @ ${BAUD} baud`
-      : "[print-agent] no printer detected yet — it will be picked up when plugged in",
+  if (!existsSync(startup)) return { installed, shortcut: null };
+
+  /*
+    A .vbs launcher rather than a shortcut to the .exe directly: it starts the
+    agent with no console window at all. A visible window invites someone to
+    close it, and printing would stop with no sign of why.
+  */
+  const vbs = path.join(startup, "Token Printer.vbs");
+  await writeFile(
+    vbs,
+    'Set sh = CreateObject("WScript.Shell")\r\n' +
+      `sh.Run """${installed}"" --service", 0, False\r\n`,
+    "utf8",
   );
+
+  return { installed, shortcut: vbs };
+}
+
+async function main() {
+  /*
+    Double-clicked, the .exe installs itself and says so. Started by Windows it
+    passes --service and goes straight to work.
+
+    The clinic's whole setup is therefore: put this file on the reception PC,
+    double-click it once.
+  */
+  if (PACKAGED && !process.argv.includes("--service")) {
+    console.log("");
+    console.log("   Token Printer");
+    console.log("   =============");
+    console.log("");
+    try {
+      const { installed, shortcut } = await installToStartup();
+      console.log(`   Installed to: ${installed}`);
+      console.log(
+        shortcut
+          ? "   It will now start automatically whenever this PC starts."
+          : "   Could not find the Startup folder; it will not auto-start.",
+      );
+    } catch (error) {
+      console.log(`   Could not install for auto-start: ${error.message}`);
+      console.log("   It will still print for as long as this window is open.");
+    }
+    console.log("");
+    console.log("   Checking the printer...");
+    console.log("");
+  }
+
+  const clinic = await loadClinic();
+  if (!clinic) {
+    // Phrased for whoever is standing at the PC, not for a developer: they
+    // cannot run a migration and should be told who can.
+    await fail("The clinic's settings could not be read from the database.");
+  }
+
+  const port = await detectPort();
+
+  if (PACKAGED && !process.argv.includes("--service")) {
+    console.log(
+      port
+        ? `   Printer found on ${port}. Ready.`
+        : "   No printer found yet.\n" +
+            "   Check it is plugged in and switched on - it will be picked up\n" +
+            "   automatically as soon as it is.",
+    );
+    console.log("");
+    console.log("   You can close this window. Printing continues in the");
+    console.log("   background, and starts again by itself when the PC does.");
+    console.log("");
+    await hold(12);
+  } else {
+    console.log(`[print-agent] watching the queue every ${POLL_MS}ms`);
+    console.log(
+      port
+        ? `[print-agent] printer on ${port} @ ${BAUD} baud`
+        : "[print-agent] no printer detected yet — it will be picked up when plugged in",
+    );
+  }
 
   setInterval(() => void tick(clinic), POLL_MS);
   void tick(clinic);
+}
+
+/** Keeps a double-clicked window on screen long enough to be read. Windows
+    closes it the instant the process ends, taking the message with it. */
+function hold(seconds) {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+/** Reports a fatal problem in words the clinic can act on, then waits so the
+    window does not vanish before anyone reads it. */
+async function fail(message) {
+  console.error("");
+  console.error(`   ${message}`);
+  console.error("");
+  console.error("   Please send this message to whoever set up the system.");
+  console.error("");
+  if (PACKAGED) await hold(30);
+  process.exit(1);
 }
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
@@ -207,7 +335,13 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   });
 }
 
-main().catch((error) => {
-  console.error("[print-agent] could not start:", error.message);
-  process.exit(1);
+main().catch(async (error) => {
+  // A network failure is the one the clinic can actually fix themselves, so
+  // it gets its own words rather than a driver-level message.
+  const message = /ENOTFOUND|ETIMEDOUT|ECONNREFUSED|getaddrinfo/i.test(
+    String(error.message),
+  )
+    ? "Could not reach the clinic's database. Check this PC is online."
+    : `Could not start: ${error.message}`;
+  await fail(message);
 });
