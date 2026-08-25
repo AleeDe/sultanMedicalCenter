@@ -41,7 +41,18 @@ const securityHeaders = [
       "img-src 'self' data: blob:",
       "media-src 'self'",
       "font-src 'self'",
-      "connect-src 'self'",
+      /*
+        The local print agent (print-agent/agent.mjs) runs on the reception
+        PC's loopback interface. Without it listed here the browser blocks the
+        request before it leaves the page, and printing silently falls back to
+        the dialog.
+
+        This does not let the deployed site reach anything on the clinic's
+        network: loopback is only ever the viewer's own machine, and the agent
+        additionally checks the Origin and binds to 127.0.0.1 rather than
+        0.0.0.0, so nothing on the clinic wifi can reach it either.
+      */
+      "connect-src 'self' http://127.0.0.1:3001 http://localhost:3001",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

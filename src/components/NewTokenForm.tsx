@@ -1333,9 +1333,10 @@ function IssuedView({
         <Badge tone="ok">
           <IconCheck className="h-3.5 w-3.5" />
           Token issued
-          {/* Serial and USB both complete before this renders; the browser
-              route only hands off to a dialog, so it is still "printing". */}
-          {mode === "serial" || mode === "usb" ? " · printed" : " · printing"}
+          {/* Every direct route has finished writing to the printer by the
+              time this renders; the browser route only hands off to a dialog,
+              so it is still "printing". */}
+          {mode && mode !== "browser" ? " · printed" : " · printing"}
         </Badge>
 
         <p
