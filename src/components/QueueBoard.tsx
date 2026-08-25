@@ -11,6 +11,7 @@ import {
   setDoctorState,
   skipToken,
   startConsultation,
+  type BreakReason,
   type DoctorQueue,
   type QueueRow,
 } from "@/app/actions/queue";
@@ -47,8 +48,11 @@ export function QueueBoard({
   initial,
   doctorId,
   compact,
+  reasons = [],
 }: {
   initial: DoctorQueue[];
+  /** Preset break reasons, from the database so the clinic can add one. */
+  reasons?: BreakReason[];
   /** When set, only this doctor's queue is shown (the doctor's own view). */
   doctorId?: number;
   compact?: boolean;
@@ -163,8 +167,17 @@ export function QueueBoard({
           onFinish={(id, no) => run(() => finishConsultation(id), `Finished ${no}`)}
           onSkip={(id, no) => run(() => skipToken(id), `${no} marked not here`)}
           onRecall={(id, no) => run(() => recallToken(id), `${no} back in queue`)}
-          onState={(state, minutes) =>
-            run(() => setDoctorState({ doctorId: q.doctorId, state, minutes }))
+          reasons={reasons}
+          onState={(state, minutes, reason, isPublic) =>
+            run(() =>
+              setDoctorState({
+                doctorId: q.doctorId,
+                state,
+                minutes,
+                reason: reason ?? "",
+                isPublic: isPublic ?? false,
+              }),
+            )
           }
         />
       ))}
@@ -184,6 +197,7 @@ function DoctorPanel({
   onSkip,
   onRecall,
   onState,
+  reasons,
 }: {
   q: DoctorQueue;
   compact?: boolean;
@@ -194,7 +208,13 @@ function DoctorPanel({
   onFinish: (id: number, displayNo: string) => void;
   onSkip: (id: number, displayNo: string) => void;
   onRecall: (id: number, displayNo: string) => void;
-  onState: (s: "AVAILABLE" | "ON_BREAK" | "FINISHED", m: number | null) => void;
+  onState: (
+    s: "AVAILABLE" | "ON_BREAK" | "FINISHED",
+    m: number | null,
+    reason?: string,
+    isPublic?: boolean,
+  ) => void;
+  reasons: BreakReason[];
 }) {
   const onBreak = q.state === "ON_BREAK";
   const nobodyLeft = q.waiting.length === 0 && q.called.length === 0;
@@ -234,6 +254,7 @@ function DoctorPanel({
           {onBreak ? (
             <Badge tone="danger">
               On break
+              {q.breakReason ? ` · ${q.breakReason}` : ""}
               {q.expectedReturnAt
                 ? ` · back ${new Date(q.expectedReturnAt).toLocaleTimeString(
                     "en-GB",
@@ -505,16 +526,29 @@ function DoctorPanel({
               </span>
             </summary>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-            {[10, 20, 30].map((m) => (
+            {/*
+              Reason-first, because the reason is what the waiting room needs
+              and the duration follows from it — a namaz break is 15 minutes,
+              a surgery is an hour. Asking for the minutes alone made every
+              break look identical on the board.
+            */}
+            {reasons.map((r) => (
               <Button
-                key={m}
+                key={r.id}
                 disabled={pending}
-                onClick={() => onState("ON_BREAK", m)}
+                onClick={() =>
+                  onState("ON_BREAK", r.minutes ?? 15, r.label, r.is_public)
+                }
                 className="h-9 px-3 text-xs"
                 style={{ minHeight: 36 }}
-                title={`Waiting patients will be told you are back in ${m} minutes`}
+                title={
+                  r.is_public
+                    ? `Shown on the waiting-room board · back in ${r.minutes ?? 15} min`
+                    : `Staff only, not shown to patients · back in ${r.minutes ?? 15} min`
+                }
               >
-                Break {m}m
+                {r.label}
+                <span className="tnum opacity-70"> {r.minutes ?? 15}m</span>
               </Button>
             ))}
             <Button

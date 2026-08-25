@@ -37,6 +37,10 @@ export type DoctorQueue = {
   speciality: string;
   state: "AVAILABLE" | "ON_BREAK" | "FINISHED";
   expectedReturnAt: string | null;
+  /** Why the doctor is away. Empty when available. */
+  breakReason: string;
+  /** Whether that reason may be shown on the public display board. */
+  breakReasonPublic: boolean;
   typicalMinutes: number;
   /** The patient in the room right now, if any. */
   current: {
@@ -70,6 +74,8 @@ type AllQueuesRow = {
   speciality: string;
   state: string;
   expected_return_at: string | null;
+  break_reason: string;
+  break_reason_public: boolean;
   typical_minutes: number;
   current: DoctorQueue["current"];
   queue_rows: QueueRow[];
@@ -89,6 +95,8 @@ export async function getQueues(doctorId?: number): Promise<DoctorQueue[]> {
     speciality: d.speciality,
     state: d.state as DoctorQueue["state"],
     expectedReturnAt: d.expected_return_at,
+    breakReason: d.break_reason ?? "",
+    breakReasonPublic: d.break_reason_public ?? false,
     typicalMinutes: d.typical_minutes,
     current: d.current ?? null,
     waiting: d.queue_rows.filter((r) => r.status === "WAITING"),
@@ -195,10 +203,29 @@ export async function announceAgain(
   return { ok: true, data: null };
 }
 
+export type BreakReason = {
+  id: number;
+  label: string;
+  is_public: boolean;
+  minutes: number | null;
+};
+
+/** The preset break reasons, so the clinic can add one without a deploy. */
+export async function getBreakReasons(): Promise<BreakReason[]> {
+  return sql<BreakReason[]>`
+    select id, label, is_public, minutes
+      from break_reason
+     where active
+     order by sort_order, label
+  `;
+}
+
 const breakSchema = z.object({
   doctorId: idSchema,
   state: z.enum(["AVAILABLE", "ON_BREAK", "FINISHED"]),
   minutes: z.coerce.number().int().min(1).max(240).nullable(),
+  reason: z.string().trim().max(60).default(""),
+  isPublic: z.coerce.boolean().default(false),
 });
 
 /**
@@ -222,12 +249,21 @@ export async function setDoctorState(
       ? new Date(Date.now() + v.minutes * 60_000).toISOString()
       : null;
 
+  // Coming back clears the reason. A stale "Namaz" left on an available
+  // doctor is worse than no reason at all — it reads as still away.
+  const reason = v.state === "ON_BREAK" ? v.reason : "";
+  const isPublic = v.state === "ON_BREAK" ? v.isPublic : false;
+
   await sql`
-    insert into doctor_session (doctor_id, state, expected_return_at, updated_at)
-    values (${v.doctorId}, ${v.state}, ${returnAt}, now())
+    insert into doctor_session (doctor_id, state, expected_return_at, reason,
+                                is_public, updated_at)
+    values (${v.doctorId}, ${v.state}, ${returnAt}, ${reason}, ${isPublic},
+            now())
     on conflict (doctor_id)
     do update set state = excluded.state,
                   expected_return_at = excluded.expected_return_at,
+                  reason = excluded.reason,
+                  is_public = excluded.is_public,
                   updated_at = now()
   `;
 
@@ -310,6 +346,13 @@ export type WaitAccuracyRow = {
   median_error: string;
   over_ran_pct: string;
   suggested_mult: string;
+  /*
+    Share of this doctor's tokens whose wait reception typed over. Those rows
+    are excluded from every other number here, so this is the reader's warning
+    that the sample is thinner than it looks — and a rising figure is itself
+    evidence the estimate is wrong.
+  */
+  override_pct: string;
 };
 
 /**

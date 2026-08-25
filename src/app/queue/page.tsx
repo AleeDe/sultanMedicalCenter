@@ -1,13 +1,16 @@
 import { QueueBoard } from "@/components/QueueBoard";
 import { guardReceptionPage } from "@/lib/auth";
-import { getQueues } from "@/app/actions/queue";
+import { getBreakReasons, getQueues } from "@/app/actions/queue";
 
 export const dynamic = "force-dynamic";
 
 /** Reception's view: every doctor's queue on one screen. */
 export default async function QueuePage() {
   await guardReceptionPage("/queue");
-  const queues = await getQueues();
+  const [queues, reasons] = await Promise.all([
+    getQueues(),
+    getBreakReasons(),
+  ]);
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-5">
@@ -21,7 +24,7 @@ export default async function QueuePage() {
           })}
         </p>
       </div>
-      <QueueBoard initial={queues} />
+      <QueueBoard initial={queues} reasons={reasons} />
     </div>
   );
 }
