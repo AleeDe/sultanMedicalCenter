@@ -2,16 +2,26 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { UsbPrinter, usbPrinter, unsupportedReason } from "./usb-printer";
+import { printSlipOverSerial } from "@/app/actions/print";
 
 /*
   One decision point for "how do we print?".
 
-  USB is preferred whenever a printer has been connected: it needs no Windows
-  driver and shows no dialog. If none is connected the caller falls back to
-  window.print(), so the app still works on a machine that was never set up.
+  Three routes, tried in order:
+
+   1. Serial — the printer is on a COM port of the machine running the server.
+      Preferred because it needs no permission click at all: reception presses
+      Print and paper comes out, on the first shift and every shift after.
+   2. WebUSB — the browser claims the printer directly. No driver either, but
+      it costs one chooser click per machine before it will print.
+   3. window.print() — the browser dialog, for a machine set up for neither.
+
+  Serial goes first precisely because of that click: a route that works
+  silently beats one that works after a prompt, and if no COM printer is
+  attached it fails in milliseconds and USB takes over.
 */
 
-export type PrintMode = "usb" | "browser";
+export type PrintMode = "serial" | "usb" | "browser";
 
 export function usePrinter() {
   const [usbReady, setUsbReady] = useState(false);
@@ -65,6 +75,33 @@ export function usePrinter() {
    */
   const print = useCallback(
     async (bytes: Uint8Array, fallback?: () => void) => {
+      /*
+        Serial first — no permission click, so this is the route that makes
+        "press Print, get paper" true. A Uint8Array does not survive the
+        server action boundary intact, so the bytes cross as a plain array.
+      */
+      let serialError: string | null = null;
+      try {
+        const result = await printSlipOverSerial(Array.from(bytes));
+        if (result.ok) {
+          setError(null);
+          return "serial" as PrintMode;
+        }
+        serialError = result.error;
+      } catch (e) {
+        serialError = e instanceof Error ? e.message : String(e);
+      }
+      /*
+        Surface why serial failed rather than swallowing it.
+
+        This route falling back silently is exactly how a broken setup hides:
+        the browser dialog opens, printing "works", and nobody learns the COM
+        printer was never reached. Reception sees the reason and can say it
+        out loud; the fallback still happens either way.
+      */
+      console.warn("[print] serial route unavailable:", serialError);
+      setError(serialError);
+
       if (usbPrinter.connected) {
         try {
           await usbPrinter.print(bytes);
