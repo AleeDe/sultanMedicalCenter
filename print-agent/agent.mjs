@@ -98,17 +98,35 @@ function writeToPrinter(bytes, path) {
         return;
       }
 
-      // Drain before closing: closing with bytes still buffered truncates the
-      // slip, usually losing the cut and sometimes the last printed lines.
+      /*
+        Write, drain, then WAIT before closing.
+
+        drain() only promises the bytes left the OS buffer — not that the
+        printer consumed them. At 9600 baud a full slip is a little over a
+        second on the wire, and closing the port underneath it truncated the
+        job: short test slips printed fine while real ones came out blank,
+        which is exactly the shape of "it worked before, now it doesn't".
+
+        The wait is computed from the actual byte count rather than fixed, so
+        a long slip gets the time it needs and a short one is not delayed.
+        10 bits per byte covers the start and stop bits, and 250ms of slack
+        covers the printer's own buffering.
+      */
+      const wireMs = Math.ceil((bytes.length * 10 * 1000) / BAUD) + 250;
+
       port.write(Buffer.from(bytes), (writeErr) => {
         if (writeErr) {
           port.close(() => resolve({ ok: false, error: writeErr.message }));
           return;
         }
         port.drain((drainErr) => {
-          port.close(() =>
-            resolve(drainErr ? { ok: false, error: drainErr.message } : { ok: true }),
-          );
+          if (drainErr) {
+            port.close(() => resolve({ ok: false, error: drainErr.message }));
+            return;
+          }
+          setTimeout(() => {
+            port.close(() => resolve({ ok: true }));
+          }, wireMs);
         });
       });
     });
@@ -386,6 +404,24 @@ async function fail(message) {
   if (PACKAGED) await hold(30);
   process.exit(1);
 }
+
+/*
+  Stay alive through anything that is not a deliberate stop.
+
+  Without these, a single unhandled rejection ends the process — and because it
+  runs windowless, nobody sees it go. Printing simply stops, tokens queue up,
+  and the next person to notice is a patient who never got a slip. The clinic
+  is open all day; a dropped database connection or a printer unplugged at the
+  wrong moment must cost one poll, not the rest of the shift.
+
+  Deliberate stops (Ctrl+C, taskkill, an upgrade) still exit below.
+*/
+process.on("unhandledRejection", (reason) => {
+  console.error("[print-agent] unhandled rejection (continuing):", reason);
+});
+process.on("uncaughtException", (error) => {
+  console.error("[print-agent] uncaught error (continuing):", error?.message);
+});
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, async () => {
