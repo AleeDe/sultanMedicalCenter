@@ -128,6 +128,12 @@ export function NewTokenForm({
   const ready =
     form.name.trim().length > 0 && form.gender !== "" && doctorId !== null;
   const doctor = doctors.find((d) => d.id === doctorId) ?? null;
+  // What the slip will print: the override if reception typed one, otherwise
+  // the live estimate. Kept here so the screen and the paper cannot disagree.
+  const quotedWait =
+    waitOverride !== null && waitOverride.trim() !== ""
+      ? Number(waitOverride)
+      : (waitPreview?.minutes ?? 0);
 
   // The patient pays once at the counter, so the slip total is the visit fee
   // plus every lab picked here.
@@ -154,13 +160,34 @@ export function NewTokenForm({
       // Offline: resolve to null so the slip carries no wait, as before.
       return previewWait(doctorId, emergency).catch(() => null);
     };
+
+    /*
+      Re-read while the form is open, because the queue moves underneath it.
+
+      Computed once when the doctor was picked, this number went stale the
+      moment another counter issued a token — reception read "7 min" off the
+      screen and the slip then printed a longer wait, which looks like a bug
+      to them and to the patient holding both.
+
+      An override is left alone: reception typed that on purpose, and having
+      it silently replaced by a poll would be worse than it being stale.
+    */
+    const pull = () =>
+      load().then((w) => {
+        if (!live) return;
+        setWaitPreview(w);
+      });
+
     load().then((w) => {
       if (!live) return;
       setWaitPreview(w);
       setWaitOverride(null);
     });
+
+    const timer = window.setInterval(pull, 15_000);
     return () => {
       live = false;
+      window.clearInterval(timer);
     };
   }, [doctorId, emergency]);
 
@@ -209,6 +236,10 @@ export function NewTokenForm({
           waitOverride === null || waitOverride.trim() === ""
             ? null
             : Number(waitOverride),
+        // What the screen was showing at this moment, so the slip prints the
+        // wait the patient was actually told rather than one recomputed after
+        // their own token joined the queue.
+        waitShown: waitPreview?.minutes ?? null,
       };
 
       /*
@@ -261,6 +292,7 @@ export function NewTokenForm({
     // applyPatient is stable enough for this closure; deps kept explicit.
   }, [
     form, forceNew, seriesId, fee, staffId, picked, doctorId, waitOverride,
+    waitPreview,
     // Read only on the offline branch, but genuinely read — leaving them out
     // would let a stale doctor or series end up on a queued slip.
     active?.code, active?.label, emergency, doctor?.name, doctor?.room, tier,
@@ -567,6 +599,19 @@ export function NewTokenForm({
                   />
                   <span className="text-sm text-muted">min</span>
                 </div>
+
+                {/*
+                  The range as the slip will actually print it. Reception used
+                  to read "7" here and then hand over a slip saying "7-17 min";
+                  two different-looking numbers for the same wait is what makes
+                  a patient think they were told something else.
+                */}
+                <span className="tnum text-sm text-muted">
+                  prints as{" "}
+                  <span className="font-semibold text-[var(--ink-2)]">
+                    {quotedWait}-{quotedWait + 10} min
+                  </span>
+                </span>
 
                 {waitOverride === null ? (
                   <Badge tone="neutral">auto</Badge>
