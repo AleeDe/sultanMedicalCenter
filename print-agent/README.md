@@ -1,21 +1,25 @@
 # Print agent
 
-Runs on the **reception PC** — the one the thermal printer is plugged into.
-
-## Why it exists
-
-The app is served from Vercel. That server is in a Mumbai data centre and has
-no printer attached, so it cannot open a COM port. The printer is on the
-reception PC. The browser is the only thing that can see both, so it posts the
-slip to this agent over loopback and the agent writes it to the port.
+Runs on the **one PC the thermal printer is plugged into**. It watches the
+token queue and prints every slip, whichever device created it.
 
 ```
-Browser (Vercel page)  ──►  agent (127.0.0.1:3001)  ──►  COM port  ──►  printer
-                                     reception PC
+Tablet   ─┐
+Phone    ─┼──►  database  ◄──  print agent  ──►  COM port  ──►  slip
+Reception─┘                   (reception PC)
 ```
 
-No token, patient or fee data crosses this boundary — the agent receives an
-opaque array of ESC/POS bytes and writes them to a serial port.
+## Why it works this way
+
+A tablet has no COM port and never will, so a token issued on one could not
+produce paper if each device printed its own slip. Routing every slip through
+the machine that owns the printer means any device can issue tokens — and the
+patient is handed their slip at the counter, which is where they are standing
+anyway.
+
+It also survives the app being served from Vercel: that server sits in a data
+centre with no printer attached, so something inside the clinic has to do the
+printing.
 
 ## Running it
 
@@ -26,12 +30,12 @@ npm run print-agent
 Expected output:
 
 ```
-[print-agent] listening on http://127.0.0.1:3001
-[print-agent] printer detected on COM7 @ 9600 baud
+[print-agent] watching the queue every 2000ms
+[print-agent] printer on COM7 @ 9600 baud
 ```
 
-Leave it running while the clinic is open. Printing falls back to the browser
-dialog whenever it is not.
+Leave it running while the clinic is open. Tokens issued while it is stopped
+stay queued and print when it starts again — nothing is lost, it just waits.
 
 ## Starting it automatically
 
@@ -43,11 +47,26 @@ So reception never has to think about it:
    ```bat
    @echo off
    cd /d "D:\BabulTech\TokenGenerator"
-   node print-agent\agent.mjs
+   npm run print-agent
    ```
 
-3. To keep the window out of the way, make a shortcut to the `.bat` and set
-   **Run: Minimized** in its properties.
+3. For a shortcut that stays out of the way, set **Run: Minimized** in its
+   properties.
+
+Staff never type a command — the PC starts, the agent starts.
+
+## After changing the slip layout
+
+The agent bundles its own copy of the slip builder, compiled from
+`src/lib/receipts.ts`. Rebuild it whenever that file or `src/lib/escpos.ts`
+changes:
+
+```bash
+npm run build:slip
+```
+
+Skipping this means the agent goes on printing the old layout while the app
+shows the new one.
 
 ## Settings
 
@@ -55,13 +74,14 @@ Environment variables, all optional:
 
 | Variable | Default | Use |
 |---|---|---|
-| `PRINT_AGENT_PORT` | `3001` | Change if 3001 is taken. Must match `AGENT_ORIGIN` in `src/lib/print-agent.ts` **and** `connect-src` in `next.config.ts`. |
-| `PRINT_AGENT_COM` | auto-detect | Pin a specific port, e.g. `COM7`. Needed only when two USB serial devices are attached and the wrong one is picked. |
-| `PRINT_AGENT_BAUD` | `9600` | Only if your printer needs a different rate. |
+| `PRINT_AGENT_COM` | auto-detect | Pin a port, e.g. `COM7`. Needed only when two USB serial devices are attached and the wrong one is picked. |
+| `PRINT_AGENT_BAUD` | `9600` | Only if the printer needs a different rate. |
+| `PRINT_AGENT_POLL_MS` | `2000` | How often to check for new tokens. |
+| `PRINT_AGENT_BATCH` | `3` | Slips claimed per poll. |
 
 ## Which printers work
 
-Any **ESC/POS thermal printer** (58mm or 80mm POS) on a COM port. This is the
+Any **ESC/POS thermal printer** (58mm or 80mm POS) on a COM port. That is the
 language POS printers speak; ordinary inkjet and laser printers do not
 understand it and will print nothing or garbage.
 
@@ -70,21 +90,32 @@ the "Standard Serial over Bluetooth link" ports Windows lists, because those
 open successfully and silently swallow everything sent to them, which looks
 exactly like a printer that prints nothing.
 
-## When it does not print
+## Two agents at once
 
-The app shows the reason on screen. Common ones:
+Safe. Claims go through `claim_pending_prints()`, which uses
+`for update skip locked`, so two agents take different tokens rather than both
+printing the same one. A second counter with its own printer just works.
 
-| Message | Cause |
+## When a slip does not appear
+
+Tokens carry their own print state, so nothing disappears silently:
+
+| State | Meaning |
 |---|---|
-| "The print agent is not running on this PC" | Start it. It is also normal on any PC that is not reception. |
-| "No printer found on a COM port" | Printer off or unplugged. Check Device Manager → Ports. |
-| "COM7 is already in use" | Another program holds the port — often a second copy of this agent. |
+| `PENDING` | Queued, waiting for an agent. Normal for a second or two; persistent means no agent is running. |
+| `CLAIMED` | An agent has it. Stuck here means the agent died mid-job — it is released automatically after two minutes. |
+| `PRINTED` | On paper. |
+| `FAILED` | The printer refused it; `print_error` says why. |
+
+```sql
+select display_no, print_status, print_error
+  from token
+ where token_date = current_date
+   and print_status <> 'PRINTED';
+```
 
 ## Security
 
-- Binds to `127.0.0.1`, never `0.0.0.0`, so nothing on the clinic wifi can
-  reach it.
-- Only accepts requests whose `Origin` is the deployed app or localhost. Add
-  the clinic's own domain to `ALLOWED_ORIGINS` in `agent.mjs` if the app moves
-  off `vercel.app`.
-- Holds no session and touches no database.
+- Holds no HTTP port — it only reads the database and writes to a COM port.
+  Nothing on the clinic network can reach it.
+- Uses the same `DATABASE_URL` as the app.

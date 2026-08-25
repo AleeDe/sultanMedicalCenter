@@ -23,11 +23,12 @@ import {
   IconStar,
   IconStethoscope,
 } from "@/components/icons";
+import { getPrintState, type PrintState } from "@/app/actions/print";
 import type { ServiceRow } from "@/app/actions/ledger";
 import type { WaitPreview } from "@/app/actions/tokens";
 import { TIER_LABEL } from "@/lib/loyalty";
 import { tokenSlipBytes } from "@/lib/receipts";
-import { usePrinter, type PrintMode } from "@/lib/use-printer";
+import { usePrinter } from "@/lib/use-printer";
 import { issueOffline } from "@/lib/offline/issue";
 import type {
   ClinicSetting,
@@ -1283,7 +1284,8 @@ function IssuedView({
   onNext: () => void;
 }) {
   const printer = usePrinter();
-  const [mode, setMode] = useState<PrintMode | null>(null);
+  const [printState, setPrintState] = useState<PrintState | null>(null);
+  const [printError, setPrintError] = useState<string | null>(null);
 
   /*
     Print once, automatically. usePrinter picks the route: the serial printer
@@ -1299,19 +1301,41 @@ function IssuedView({
     So: no cancellation on cleanup, and the guard is keyed to the receipt so a
     genuinely new token always prints exactly once.
   */
-  const { print } = printer;
-  const printedFor = useRef<string | null>(null);
+  /*
+    The slip is NOT printed from here.
 
+    Issuing queues the token; print-agent/agent.mjs, on the PC the printer is
+    attached to, picks it up and prints it. Printing from the issuing device
+    as well would put two identical slips on the roll for every token issued
+    at reception, and would still leave a tablet unable to print at all.
+
+    "Print again" below stays, for the case where the paper jammed or the
+    patient lost their slip and someone is standing at the counter asking.
+
+    What is watched instead is the queue itself, so reception sees the slip
+    reach paper — or sees why it did not, while the patient is still at the
+    counter rather than after they have left.
+  */
   useEffect(() => {
-    if (printedFor.current === receipt.unique_id) return;
-    printedFor.current = receipt.unique_id;
-    void (async () => {
-      const used = await print(tokenSlipBytes(receipt, clinic), () =>
-        window.print(),
-      );
-      setMode(used);
-    })();
-  }, [receipt, clinic, print]);
+    let live = true;
+    const poll = async () => {
+      const state = await getPrintState(receipt.unique_id).catch(() => null);
+      if (!live || !state) return;
+      setPrintState(state.status);
+      setPrintError(state.error);
+      // Stop once it has settled: a printed slip does not un-print, and a
+      // failed one needs someone to act rather than another poll.
+      if (state.status === "PRINTED" || state.status === "FAILED") {
+        window.clearInterval(timer);
+      }
+    };
+    const timer = window.setInterval(poll, 1200);
+    void poll();
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, [receipt.unique_id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1330,14 +1354,25 @@ function IssuedView({
         data-mode={receipt.is_emergency ? "emergency" : "normal"}
         className="no-print mx-auto flex max-w-2xl flex-col items-center px-5 py-10 text-center"
       >
-        <Badge tone="ok">
+        {/* The token exists either way — that is never in doubt once this
+            screen renders. Only the paper is still in question, so a print
+            failure colours the badge without implying the token is lost. */}
+        <Badge tone={printState === "FAILED" ? "danger" : "ok"}>
           <IconCheck className="h-3.5 w-3.5" />
           Token issued
-          {/* Every direct route has finished writing to the printer by the
-              time this renders; the browser route only hands off to a dialog,
-              so it is still "printing". */}
-          {mode && mode !== "browser" ? " · printed" : " · printing"}
+          {printState === "PRINTED"
+            ? " · printed"
+            : printState === "FAILED"
+              ? " · NOT printed"
+              : " · printing"}
         </Badge>
+
+        {printState === "FAILED" && (
+          <p className="mt-2 max-w-sm text-xs text-[var(--danger)]">
+            {printError ?? "The printer refused the slip."} Use Print again
+            once it is ready.
+          </p>
+        )}
 
         <p
           className="tnum animate-pop my-3 text-[92px] font-black leading-none tracking-tight

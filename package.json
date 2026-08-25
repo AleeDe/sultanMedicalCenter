@@ -20,7 +20,8 @@
     "test:ui": "node scripts/test-ui.mjs",
     "test:db": "node scripts/test-db.mjs",
     "test:seeded": "node scripts/test-seeded.mjs",
-    "print-agent": "node print-agent/agent.mjs"
+    "print-agent": "node --env-file=.env.local print-agent/agent.mjs",
+    "build:slip": "node print-agent/build-slip.mjs"
   },
   "dependencies": {
     "next": "16.3.1",
@@ -36,6 +37,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/w3c-web-usb": "^1.0.14",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "playwright": "^1.62.1",

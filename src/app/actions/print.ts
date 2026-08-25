@@ -1,5 +1,6 @@
 "use server";
 
+import { sql } from "@/lib/db";
 import { requireReception } from "@/lib/auth";
 import {
   listSerialPorts,
@@ -50,4 +51,27 @@ export async function printSlipOverSerial(
 export async function getSerialPorts(): Promise<SerialPortInfo[]> {
   await requireReception();
   return listSerialPorts();
+}
+
+export type PrintState = "PENDING" | "CLAIMED" | "PRINTED" | "FAILED";
+
+/**
+ * Where a token has got to on its way to paper.
+ *
+ * The issuing device no longer prints, so it cannot know the outcome itself —
+ * it asks the queue. Reception needs this: a slip that never printed must be
+ * visible at the counter while the patient is still standing there, not
+ * discovered later.
+ */
+export async function getPrintState(
+  uniqueId: string,
+): Promise<{ status: PrintState; error: string | null } | null> {
+  await requireReception();
+  const rows = await sql<{ print_status: PrintState; print_error: string | null }[]>`
+    select print_status, print_error
+      from token
+     where unique_id = ${uniqueId}
+  `;
+  if (rows.length === 0) return null;
+  return { status: rows[0].print_status, error: rows[0].print_error };
 }

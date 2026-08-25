@@ -3,28 +3,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { UsbPrinter, usbPrinter, unsupportedReason } from "./usb-printer";
 import { printSlipOverSerial } from "@/app/actions/print";
-import { printViaAgent } from "./print-agent";
 
 /*
   One decision point for "how do we print?".
 
-  Four routes, tried in order:
+  The slip is normally printed by print-agent/agent.mjs, on the one PC the
+  printer is plugged into. It watches the token queue, so a token issued on a
+  tablet or a phone still produces paper at the counter — those devices have
+  no COM port and never will, and asking each device to print its own slip is
+  what made them unusable for issuing at all.
 
-   1. Local agent — print-agent/agent.mjs running on the reception PC, holding
-      the COM port. This is the production route: the app is served from
-      Vercel, so the server has no printer, but the browser can reach a
-      service on the same PC as the printer.
-   2. Server serial — the server itself owns the COM port. True only when the
-      app runs on the clinic's own PC, which is the development setup.
-   3. WebUSB — the browser claims the printer directly. Needs one permission
-      click per machine, and is disabled by default in Brave.
-   4. window.print() — the browser dialog, when none of the above is set up.
+  What remains here is for the device that IS at the printer:
 
-  Order is by how little the user has to do: agent and server serial need no
-  click at all, WebUSB needs one per machine, the dialog needs one per slip.
+   1. Server serial — the server owns the COM port. True when the app runs on
+      the clinic's own PC, which is the development setup.
+   2. WebUSB — the browser claims the printer directly. One permission click
+      per machine, and disabled by default in Brave.
+   3. window.print() — the browser dialog.
+
+  A caller that leaves printing to the agent should not call print() at all.
 */
 
-export type PrintMode = "agent" | "serial" | "usb" | "browser";
+export type PrintMode = "serial" | "usb" | "browser";
 
 export function usePrinter() {
   const [usbReady, setUsbReady] = useState(false);
@@ -79,24 +79,14 @@ export function usePrinter() {
   const print = useCallback(
     async (bytes: Uint8Array, fallback?: () => void) => {
       /*
-        The local agent first: it is the only route that reaches a COM port
-        when the app is served from Vercel, and it needs no click ever.
-      */
-      const viaAgent = await printViaAgent(bytes);
-      if (viaAgent.ok) {
-        setError(null);
-        return "agent" as PrintMode;
-      }
-
-      /*
-        Then the server's own COM port. This only succeeds when the app runs
-        on the machine the printer is plugged into — the development setup,
-        and any clinic that later runs the app locally.
+        The server's own COM port. This only succeeds when the app runs on the
+        machine the printer is plugged into — the development setup, and any
+        clinic that later runs the app locally rather than from Vercel.
 
         A Uint8Array does not survive the server action boundary intact, so
         the bytes cross as a plain array.
       */
-      let serialError: string | null = viaAgent.error;
+      let serialError: string | null = null;
       try {
         const result = await printSlipOverSerial(Array.from(bytes));
         if (result.ok) {
