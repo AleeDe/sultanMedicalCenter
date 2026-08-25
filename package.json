@@ -9,6 +9,7 @@
     "lint": "eslint",
     "build:voice": "node scripts/build-voice.mjs",
     "migrate": "node --env-file=.env.local scripts/migrate.mjs",
+    "migrate:prod": "node --env-file=.env.production.local scripts/migrate.mjs",
     "test:concurrency": "node --env-file=.env.local scripts/test-concurrency.mjs",
     "test:flow": "node --env-file=.env.local scripts/test-flow.mjs",
     "test:escpos": "node scripts/test-escpos.mjs",

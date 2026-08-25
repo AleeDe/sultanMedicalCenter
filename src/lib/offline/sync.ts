@@ -168,12 +168,19 @@ export function useSync(seriesIds: number[]) {
       const remaining = await leaseRemaining(seriesId);
       if (remaining >= LEASE_LOW) continue;
 
+      /*
+        Caught as well as returned. leaseBlock no longer throws on a missing
+        session, but this loop runs on a timer on every screen including the
+        sign-in page, and an unhandled rejection from a background timer takes
+        down the whole React tree in a production build. Topping up a lease is
+        never worth that, whatever the reason it failed.
+      */
       const res = await leaseBlock({
         counterId: counterId(),
         seriesId,
         size: LEASE_SIZE,
-      });
-      if (!res.ok) continue;
+      }).catch(() => null);
+      if (!res?.ok) continue;
 
       const b = res.data;
       await leaseSet({
@@ -257,23 +264,33 @@ export function useSync(seriesIds: number[]) {
       immediately, which is also the honest thing to display before any probe
       has actually completed.
     */
+    /*
+      Rejections are swallowed at every one of these call sites because all of
+      them are floating promises — a timer or a window event, with nothing
+      above to catch them. An unhandled rejection from a background timer does
+      not merely log in a production build: it tears down the React tree, and
+      the user gets "This page couldn't load" (React #441). Sync quietly
+      failing for one pass is never worth the whole screen.
+    */
+    const safeTick = () => void tick().catch(() => {});
+
     const start = setTimeout(() => {
-      void refresh();
-      void tick();
+      void refresh().catch(() => {});
+      safeTick();
     }, 0);
 
     // Browser events are a hint to check sooner, not the source of truth.
     // Both go through tick() rather than setting state inline: navigator's
     // "offline" can fire while our server is still reachable over a local
     // network, and vice versa.
-    const onUp = () => void tick();
-    const onDown = () => void tick();
+    const onUp = safeTick;
+    const onDown = safeTick;
     window.addEventListener("online", onUp);
     window.addEventListener("offline", onDown);
 
     // A slow poll catches the case the browser never fires an event for:
     // the interface stayed up but the upstream link came back.
-    const timer = window.setInterval(() => void tick(), 20_000);
+    const timer = window.setInterval(safeTick, 20_000);
 
     return () => {
       clearTimeout(start);

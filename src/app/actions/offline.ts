@@ -39,7 +39,25 @@ const leaseSchema = z.object({
 export async function leaseBlock(
   input: z.input<typeof leaseSchema>,
 ): Promise<ActionResult<LeasedBlock>> {
-  await requireReception();
+  /*
+    Returned, not thrown.
+
+    The offline sync loop tops up leases on a timer, and that timer runs on
+    the sign-in screen too — where there is no session yet, so requireReception
+    threw straight out of a server action with nothing to catch it. In dev
+    that is a logged 500 and the page still renders; in a production build it
+    is an unhandled rejection that takes down the React tree, which is the
+    "This page couldn't load" / React #441 screen users were getting on the
+    login page.
+
+    A caller with no session is not an error worth crashing for: it is simply
+    a caller with nothing to lease.
+  */
+  try {
+    await requireReception();
+  } catch {
+    return { ok: false, error: "Not signed in." };
+  }
   const parsed = leaseSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid lease request." };
   const v = parsed.data;
@@ -109,7 +127,14 @@ export type SyncTokenInput = z.input<typeof syncSchema>;
 export async function syncToken(
   input: SyncTokenInput,
 ): Promise<ActionResult<{ display_no: string; alreadyPresent: boolean }>> {
-  await requireReception();
+  // Same reasoning as leaseBlock: the drain loop runs without a session on
+  // the sign-in screen, and a throw from here escapes as an unhandled
+  // rejection rather than something the caller can act on.
+  try {
+    await requireReception();
+  } catch {
+    return { ok: false, error: "Not signed in." };
+  }
   const parsed = syncSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: "This queued token could not be read." };
