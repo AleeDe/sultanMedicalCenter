@@ -42,7 +42,13 @@ const issueSchema = z.object({
     estimate" — the ordinary case. Kept separate from the estimate all the way
     into the database so the accuracy tuning is never polluted by a guess.
   */
-  waitOverride: z.coerce.number().int().min(0).max(600).nullable().default(null),
+  waitOverride: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(600)
+    .nullable()
+    .default(null),
   /*
     The estimate reception was actually looking at when they pressed Issue.
 
@@ -85,7 +91,14 @@ export async function getClinic(): Promise<ClinicSetting> {
 
 export async function getDoctors(): Promise<Doctor[]> {
   return sql<Doctor[]>`
-    select id, name, speciality, room, active, sort_order
+    /*
+      id::int, because doctor.id is a bigint and postgres.js returns bigint as
+      a string to protect ids past Number.MAX_SAFE_INTEGER. Doctor.id is typed
+      number, so every === against it silently failed: picking a doctor after
+      sign-in found nobody, and the server-side guard refused the doctor its
+      own actions. A clinic will not reach 2^53 doctors; the cast is safe.
+    */
+    select id::int as id, name, speciality, room, active, sort_order
       from doctor
      where active
      -- Fixed order, never "most booked": reception picks from memorised
@@ -145,9 +158,7 @@ export async function findPatients(
      }
      group by p.id
      order by ${
-       kind === "NAME"
-         ? sql`similarity(p.name, ${q}) desc,`
-         : sql``
+       kind === "NAME" ? sql`similarity(p.name, ${q}) desc,` : sql``
      } max(v.opened_at) desc nulls last
      limit 25
   `;
@@ -202,9 +213,7 @@ export async function getPatientSummary(
     Ties break toward the most recent, because that is the one reception
     would have guessed anyway.
   */
-  const [usual] = await sql<
-    { doctor_id: number; doctor_name: string }[]
-  >`
+  const [usual] = await sql<{ doctor_id: number; doctor_name: string }[]>`
     select d.id as doctor_id, d.name as doctor_name
       from visit v
       join doctor d on d.id = v.doctor_id
@@ -373,8 +382,7 @@ export async function issueToken(
     console.error("issueToken failed", err);
     return {
       ok: false,
-      error:
-        "Could not issue the token. Nothing was saved — please try again.",
+      error: "Could not issue the token. Nothing was saved — please try again.",
     };
   }
 }
@@ -402,4 +410,3 @@ type RawReceipt = {
   total: string;
   visit_count: number;
 };
-

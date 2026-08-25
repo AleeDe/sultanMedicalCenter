@@ -83,7 +83,7 @@ export async function getSession(): Promise<Session | null> {
   if (!token) return null;
 
   const [row] = await sql<
-    { role: Role; doctor_id: number | null; actor: string }[]
+    { role: Role; doctor_id: string | null; actor: string }[]
   >`
     update auth_session
        set last_seen_at = now()
@@ -92,7 +92,22 @@ export async function getSession(): Promise<Session | null> {
     returning role, doctor_id, actor
   `;
   if (!row) return null;
-  return { role: row.role, doctorId: row.doctor_id, actor: row.actor };
+  /*
+    doctor_id is a bigint, and postgres.js returns bigint as a STRING so that
+    ids beyond Number.MAX_SAFE_INTEGER cannot be silently corrupted. The type
+    here claimed number while the value was "4", and requireDoctor compared it
+    with === against a real number: "4" === 4 is false, so EVERY doctor action
+    was refused as unauthorised while the doctor was plainly signed in. The
+    screen said "session expired" over a queue it had just loaded.
+
+    Converted once, at the boundary, so Session.doctorId is a number for real
+    rather than by assertion.
+  */
+  return {
+    role: row.role,
+    doctorId: row.doctor_id === null ? null : Number(row.doctor_id),
+    actor: row.actor,
+  };
 }
 
 /** Ends the current session and clears the cookie. */
@@ -164,11 +179,22 @@ export async function requireAdmin(): Promise<Session> {
  * refused. Admin is exempt so reception/management can drive any queue from
  * the shared /queue screen.
  */
-export async function requireDoctor(doctorId: number): Promise<Session> {
+export async function requireDoctor(
+  doctorId: number | string,
+): Promise<Session> {
   const s = await getSession();
   if (!s) throw new AuthError();
   if (s.role === "ADMIN" || s.role === "RECEPTION") return s;
-  if (s.role === "DOCTOR" && s.doctorId === doctorId) return s;
+  /*
+    Compared as numbers on both sides. Doctor ids originate as bigint and
+    reach this function as a string from some callers and a number from
+    others; a === between the two forms is false however careful the caller
+    was, and the failure mode is a locked-out doctor rather than a type error.
+  */
+  const wanted = Number(doctorId);
+  if (s.role === "DOCTOR" && s.doctorId !== null && s.doctorId === wanted) {
+    return s;
+  }
   throw new AuthError();
 }
 
