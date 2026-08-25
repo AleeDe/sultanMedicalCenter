@@ -39,21 +39,17 @@ stay queued and print when it starts again — nothing is lost, it just waits.
 
 ## Starting it automatically
 
-So reception never has to think about it:
+Double-click **`print-agent\install-startup.bat`** once on the reception PC.
 
-1. Press `Win + R`, type `shell:startup`, press Enter.
-2. Create `print-agent.bat` in that folder:
+It registers the agent to start with Windows and starts it immediately, so no
+reboot is needed. From then on staff never type a command — the PC starts,
+the agent starts.
 
-   ```bat
-   @echo off
-   cd /d "D:\BabulTech\TokenGenerator"
-   npm run print-agent
-   ```
+It runs with no console window, deliberately: a visible one invites someone to
+close it, and printing would stop silently.
 
-3. For a shortcut that stays out of the way, set **Run: Minimized** in its
-   properties.
-
-Staff never type a command — the PC starts, the agent starts.
+To undo, press `Win + R`, type `shell:startup`, and delete
+"TokenGenerator print agent.vbs" from the folder that opens.
 
 ## After changing the slip layout
 

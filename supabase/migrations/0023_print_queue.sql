@@ -116,30 +116,36 @@ as $$
     -- quoted_wait_min lives on the token, not the visit: it records what this
     -- particular slip told the patient, which is the number to reprint.
     'wait_minutes', t.quoted_wait_min,
-    -- There is no fee column; the consultation fee is the first paid item on
-    -- the visit, matching how issue_token_full() assembles it.
+    /*
+      The money fields mirror issue_token_full() line for line, deliberately.
+
+      That function reads unit_price_snapshot rather than the computed
+      visit_item_total(), orders by id, and filters on nothing. Reproducing it
+      exactly is the point: this is a REPRINT of a slip that function already
+      described, so any "improvement" here — applying qty and discount, or
+      excluding PENDING items — would print different paper from the original
+      for the same token. If that arithmetic is wrong it is wrong in both
+      places and should be fixed in both.
+    */
     'fee',          to_char(
-                      coalesce((select vi.line_total
+                      coalesce((select vi.unit_price_snapshot
                                   from visit_item vi
                                  where vi.visit_id = t.visit_id
-                                   and vi.status = 'PAID'
-                                 order by vi.added_at
+                                 order by vi.id
                                  limit 1), 0),
                       'FM999999990.00'),
     'lines',        coalesce(
                       (select json_agg(json_build_object(
                                 'name',   vi.name_snapshot,
-                                'amount', to_char(vi.line_total, 'FM999999990.00'))
-                              order by vi.added_at)
+                                'amount', to_char(vi.unit_price_snapshot, 'FM999999990.00'))
+                              order by vi.id)
                          from visit_item vi
-                        where vi.visit_id = t.visit_id
-                          and vi.status = 'PAID'),
+                        where vi.visit_id = t.visit_id),
                       '[]'::json),
     'total',        to_char(
-                      coalesce((select sum(vi.line_total)
+                      coalesce((select sum(vi.unit_price_snapshot)
                                   from visit_item vi
-                                 where vi.visit_id = t.visit_id
-                                   and vi.status = 'PAID'), 0),
+                                 where vi.visit_id = t.visit_id), 0),
                       'FM999999990.00'),
     -- The tier is resolved here rather than in the agent. Duplicating the
     -- thresholds in a second language is how they drift: the agent would go
