@@ -263,9 +263,17 @@ textarea {
   font-size: 16px; /* prevents mobile zoom-on-focus */
 }
 
-input,
-select,
-textarea {
+/*
+  In @layer base so Tailwind utilities on the element win.
+
+  Unlayered CSS beats layered CSS no matter the specificity, and Tailwind v4
+  puts its utilities in a layer — so this bare `input` rule was overriding
+  every `pl-10` in the app. Every field reserving room for a leading icon (the
+  PIN boxes on all three sign-in screens) drew its text underneath the icon.
+  :where() additionally keeps it at zero specificity.
+*/
+@layer base {
+:where(input, select, textarea) {
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line-strong);
@@ -274,6 +282,7 @@ textarea {
   width: 100%;
   outline: none;
   transition: border-color 0.12s, box-shadow 0.12s;
+}
 }
 
 input::placeholder {

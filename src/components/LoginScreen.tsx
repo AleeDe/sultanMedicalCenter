@@ -4,7 +4,8 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { signInReception } from "@/app/actions/auth";
 import { Alert, Button, Card } from "@/components/ui";
-import { IconLock, IconMedical } from "@/components/icons";
+import { IconMedical } from "@/components/icons";
+import { PinField } from "@/components/PinField";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 /*
@@ -74,35 +75,15 @@ export function LoginScreen({ next }: { next: string }) {
             </div>
           )}
 
-          <label
-            htmlFor="reception-pin"
-            className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted"
-          >
-            Reception PIN
-          </label>
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">
-              <IconLock className="h-[18px] w-[18px]" />
-            </span>
-            <input
-              id="reception-pin"
-              ref={inputRef}
-              type="password"
-              inputMode="numeric"
-              autoComplete="off"
-              autoFocus
-              maxLength={6}
-              value={pin}
-              placeholder="••••"
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-              // 48px tall — a primary field on a shared touchscreen.
-              className="w-full rounded-[var(--r)] border-2 border-[var(--line)] bg-[var(--surface)]
-                py-3 pl-10 pr-3 text-lg tracking-[0.3em] outline-none transition-colors
-                focus:border-[var(--accent)]"
-              style={{ minHeight: 48 }}
-            />
-          </div>
+          <PinField
+            id="reception-pin"
+            label="Reception PIN"
+            value={pin}
+            onChange={setPin}
+            onEnter={submit}
+            ref={inputRef}
+            autoFocus
+          />
 
           <Button
             variant="primary"

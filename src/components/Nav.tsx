@@ -75,7 +75,19 @@ export function Nav({ seriesIds = [] }: { seriesIds?: number[] }) {
     A shared bar here would only take space from the thing each screen
     exists to show.
   */
-  if (path.startsWith("/display") || path.startsWith("/doctor")) return null;
+  /*
+    Sign-in has no chrome either. Every destination in this bar is behind the
+    PIN, so showing it to someone who has not entered one offers links that
+    only bounce them back here — and it made the sign-in card look like a
+    dialog floating over a working app rather than the front door.
+  */
+  if (
+    path.startsWith("/display") ||
+    path.startsWith("/doctor") ||
+    path.startsWith("/login")
+  ) {
+    return null;
+  }
 
   return (
     <nav
