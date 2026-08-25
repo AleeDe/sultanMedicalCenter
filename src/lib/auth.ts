@@ -114,11 +114,25 @@ export async function destroySession(): Promise<void> {
   hard failure, not a silent bypass.
 */
 
-class AuthError extends Error {
+export class AuthError extends Error {
   constructor() {
     super("Not authorised.");
     this.name = "AuthError";
   }
+}
+
+/*
+  Exported so actions can tell "this session expired" apart from "the database
+  broke". Left unhandled, the guard's throw becomes a 500 and the button that
+  triggered it reports nothing at all, which is how an expired doctor session
+  looked identical to a dead server.
+
+  Matched by name, not instanceof: the class identity does not survive every
+  bundling boundary, and a guard that silently stops recognising its own error
+  would fail in the direction of showing a 500 again.
+*/
+export function isAuthError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AuthError";
 }
 
 /** Any signed-in staff member (reception, admin, or a doctor). */
@@ -131,7 +145,8 @@ export async function requireStaff(): Promise<Session> {
 /** Reception-level: reception, or admin (admin can do anything reception can). */
 export async function requireReception(): Promise<Session> {
   const s = await getSession();
-  if (!s || (s.role !== "RECEPTION" && s.role !== "ADMIN")) throw new AuthError();
+  if (!s || (s.role !== "RECEPTION" && s.role !== "ADMIN"))
+    throw new AuthError();
   return s;
 }
 
@@ -224,10 +239,16 @@ export async function verifyDoctorPin(
   pin: string,
 ): Promise<PinResult & { name: string | null }> {
   const [doc] = await sql<
-    { name: string; pin_bcrypt: string | null; pin_hash: string | null; pin_salt: string | null }[]
+    {
+      name: string;
+      pin_bcrypt: string | null;
+      pin_hash: string | null;
+      pin_salt: string | null;
+    }[]
   >`select name, pin_bcrypt, pin_hash, pin_salt from doctor where id = ${doctorId} and active`;
 
-  if (!doc) return { ok: false, isDefault: false, lockedSeconds: 0, name: null };
+  if (!doc)
+    return { ok: false, isDefault: false, lockedSeconds: 0, name: null };
 
   const [r] = await sql<
     { ok: boolean; is_default: boolean; locked_seconds: number }[]

@@ -4,7 +4,24 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
 import type { ActionResult } from "@/app/actions/tokens";
-import { requireAdmin, requireDoctor, requireStaff, verifyDoctorPin } from "@/lib/auth";
+import {
+  requireAdmin,
+  requireDoctor,
+  requireStaff,
+  verifyDoctorPin,
+} from "@/lib/auth";
+import { guarded } from "@/lib/guard";
+
+/*
+  Both screens read this data, so both are invalidated together. /doctor polls
+  getQueues on its own and does not depend on this, but reception's /queue is
+  server-rendered and would otherwise keep showing a patient who has already
+  been called from the doctor's tablet.
+*/
+function revalidateQueue(): void {
+  revalidateQueue();
+  revalidatePath("/doctor");
+}
 
 /*
   Queue operations.
@@ -120,19 +137,20 @@ export async function callNext(
 ): Promise<ActionResult<{ display_no: string; patient_name: string } | null>> {
   const id = idSchema.safeParse(doctorId);
   if (!id.success) return { ok: false, error: "Unknown doctor." };
-  await requireDoctor(id.data);
 
-  try {
+  const res = await guarded(async () => {
+    await requireDoctor(id.data);
     const [row] = await sql<
       { display_no: string; patient_name: string }[]
     >`select * from call_next(${id.data}, true)`;
-
-    revalidatePath("/queue");
-    return { ok: true, data: row ?? null };
-  } catch (err) {
+    revalidateQueue();
+    return row ?? null;
+  }).catch((err) => {
     console.error("callNext failed", err);
-    return { ok: false, error: "Could not call the next patient." };
-  }
+    return { ok: false as const, error: "Could not call the next patient." };
+  });
+
+  return res;
 }
 
 export async function startConsultation(
@@ -140,10 +158,12 @@ export async function startConsultation(
 ): Promise<ActionResult<null>> {
   const id = idSchema.safeParse(tokenId);
   if (!id.success) return { ok: false, error: "Unknown token." };
-  await requireStaff();
-  await sql`select start_consultation(${id.data})`;
-  revalidatePath("/queue");
-  return { ok: true, data: null };
+  return guarded(async () => {
+    await requireStaff();
+    await sql`select start_consultation(${id.data})`;
+    revalidateQueue();
+    return null;
+  });
 }
 
 export async function finishConsultation(
@@ -151,10 +171,12 @@ export async function finishConsultation(
 ): Promise<ActionResult<null>> {
   const id = idSchema.safeParse(tokenId);
   if (!id.success) return { ok: false, error: "Unknown token." };
-  await requireStaff();
-  await sql`select finish_consultation(${id.data})`;
-  revalidatePath("/queue");
-  return { ok: true, data: null };
+  return guarded(async () => {
+    await requireStaff();
+    await sql`select finish_consultation(${id.data})`;
+    revalidateQueue();
+    return null;
+  });
 }
 
 /** Skips a patient who did not appear. Recoverable until the second skip. */
@@ -163,12 +185,14 @@ export async function skipToken(
 ): Promise<ActionResult<{ status: string }>> {
   const id = idSchema.safeParse(tokenId);
   if (!id.success) return { ok: false, error: "Unknown token." };
-  await requireStaff();
-  const [row] = await sql<{ skip_token: string }[]>`
-    select skip_token(${id.data})
-  `;
-  revalidatePath("/queue");
-  return { ok: true, data: { status: row.skip_token } };
+  return guarded(async () => {
+    await requireStaff();
+    const [row] = await sql<{ skip_token: string }[]>`
+      select skip_token(${id.data})
+    `;
+    revalidateQueue();
+    return { status: row.skip_token };
+  });
 }
 
 /** Returns a skipped patient to the queue at their original position. */
@@ -177,10 +201,12 @@ export async function recallToken(
 ): Promise<ActionResult<null>> {
   const id = idSchema.safeParse(tokenId);
   if (!id.success) return { ok: false, error: "Unknown token." };
-  await requireStaff();
-  await sql`select recall_token(${id.data})`;
-  revalidatePath("/queue");
-  return { ok: true, data: null };
+  return guarded(async () => {
+    await requireStaff();
+    await sql`select recall_token(${id.data})`;
+    revalidateQueue();
+    return null;
+  });
 }
 
 /**
@@ -197,10 +223,12 @@ export async function announceAgain(
 ): Promise<ActionResult<null>> {
   const id = idSchema.safeParse(tokenId);
   if (!id.success) return { ok: false, error: "Unknown token." };
-  await requireStaff();
-  await sql`select announce_again(${id.data})`;
-  revalidatePath("/queue");
-  return { ok: true, data: null };
+  return guarded(async () => {
+    await requireStaff();
+    await sql`select announce_again(${id.data})`;
+    revalidateQueue();
+    return null;
+  });
 }
 
 export type BreakReason = {
@@ -241,20 +269,22 @@ export async function setDoctorState(
   const parsed = breakSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid request." };
   const v = parsed.data;
-  // A doctor may set their own break; reception/admin may set anyone's.
-  await requireDoctor(v.doctorId);
 
-  const returnAt =
-    v.state === "ON_BREAK" && v.minutes
-      ? new Date(Date.now() + v.minutes * 60_000).toISOString()
-      : null;
+  return guarded(async () => {
+    // A doctor may set their own break; reception/admin may set anyone's.
+    await requireDoctor(v.doctorId);
 
-  // Coming back clears the reason. A stale "Namaz" left on an available
-  // doctor is worse than no reason at all — it reads as still away.
-  const reason = v.state === "ON_BREAK" ? v.reason : "";
-  const isPublic = v.state === "ON_BREAK" ? v.isPublic : false;
+    const returnAt =
+      v.state === "ON_BREAK" && v.minutes
+        ? new Date(Date.now() + v.minutes * 60_000).toISOString()
+        : null;
 
-  await sql`
+    // Coming back clears the reason. A stale "Namaz" left on an available
+    // doctor is worse than no reason at all — it reads as still away.
+    const reason = v.state === "ON_BREAK" ? v.reason : "";
+    const isPublic = v.state === "ON_BREAK" ? v.isPublic : false;
+
+    await sql`
     insert into doctor_session (doctor_id, state, expected_return_at, reason,
                                 is_public, updated_at)
     values (${v.doctorId}, ${v.state}, ${returnAt}, ${reason}, ${isPublic},
@@ -267,8 +297,9 @@ export async function setDoctorState(
                   updated_at = now()
   `;
 
-  revalidatePath("/queue");
-  return { ok: true, data: null };
+    revalidateQueue();
+    return null;
+  });
 }
 
 /* -------------------------------------------------------- doctor sign-in */
@@ -359,9 +390,7 @@ export type WaitAccuracyRow = {
  * Predicted vs actual wait. Feeds the Admin -> Wait accuracy tab, which is
  * how the over-promise multiplier gets tuned against real data.
  */
-export async function getWaitAccuracy(
-  days = 30,
-): Promise<WaitAccuracyRow[]> {
+export async function getWaitAccuracy(days = 30): Promise<WaitAccuracyRow[]> {
   const d = Number.isFinite(days) ? Math.min(365, Math.max(1, days)) : 30;
   return sql<WaitAccuracyRow[]>`select * from wait_accuracy(${d})`;
 }

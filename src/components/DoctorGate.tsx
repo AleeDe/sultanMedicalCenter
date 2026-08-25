@@ -1,14 +1,59 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from "react";
 import { signInDoctor, signOut as endSession } from "@/app/actions/auth";
 import { Alert, Button, Card, DoctorAvatar } from "@/components/ui";
-import { IconEye, IconEyeOff, IconLock, IconStethoscope } from "@/components/icons";
+import {
+  IconEye,
+  IconEyeOff,
+  IconLock,
+  IconStethoscope,
+} from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import type { Doctor } from "@/lib/types";
 
 const IDLE_MS = 30 * 60 * 1000;
 const KEY = "tokgen.doctorId";
+
+/*
+  The remembered doctor, read through useSyncExternalStore.
+
+  It has to be read differently on the server (where there is no localStorage)
+  than in the browser, and that is exactly the split this hook exists for: it
+  takes a separate server snapshot, so React expects the two first renders to
+  differ instead of treating it as a corrupted tree.
+
+  The earlier lazy useState initialiser had no way to say that. It returned
+  null on the server and the saved id in the browser, React saw a hydration
+  mismatch, discarded the subtree and rebuilt it — and until that finished
+  nothing inside was interactive. The visible symptom was a Call next button
+  that did nothing at all when pressed.
+*/
+function subscribe(cb: () => void): () => void {
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+}
+
+function readStoredDoctor(): string | null {
+  try {
+    return localStorage.getItem(KEY);
+  } catch {
+    // A tablet with site data blocked still has to reach the PIN screen.
+    return null;
+  }
+}
+
+/* No localStorage exists during the server render, so nobody is remembered. */
+function serverDoctor(): string | null {
+  return null;
+}
 
 /*
   Doctor sign-in.
@@ -31,17 +76,21 @@ export function DoctorGate({
   children: (doctor: Doctor) => React.ReactNode;
 }) {
   const [signedIn, setSignedIn] = useState<Doctor | null>(null);
+
+  const stored = useSyncExternalStore(
+    subscribe,
+    readStoredDoctor,
+    serverDoctor,
+  );
   /*
-    Lazy initialiser rather than an effect: reading localStorage in an effect
-    causes a second render before paint, and the saved doctor is available
-    synchronously anyway. Guarded for the server render, where there is no
-    localStorage at all.
+    An explicit choice this session overrides the remembered one; null means
+    "nobody has chosen yet", so fall back to storage. Kept as its own state
+    rather than seeding from `stored`, so that picking a different doctor is
+    not undone the next time the stored value is re-read.
   */
-  const [picked, setPicked] = useState<number | null>(() => {
-    if (typeof localStorage === "undefined") return null;
-    const saved = localStorage.getItem(KEY);
-    return saved ? Number(saved) : null;
-  });
+  const [chosen, setChosen] = useState<number | null>(null);
+  const picked = chosen ?? (stored ? Number(stored) : null);
+  const setPicked = setChosen;
   const [pin, setPin] = useState("");
   const [shown, setShown] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +171,9 @@ export function DoctorGate({
                 {signedIn.name}
               </p>
               <p className="truncate text-xs text-muted">
-                {[signedIn.speciality, signedIn.room].filter(Boolean).join(" · ")}
+                {[signedIn.speciality, signedIn.room]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             </div>
             <ThemeToggle />
@@ -220,7 +271,9 @@ export function DoctorGate({
                 aria-label="Doctor PIN"
                 placeholder="••••"
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-                onKeyDown={(e) => e.key === "Enter" && pin.length >= 4 && submit()}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && pin.length >= 4 && submit()
+                }
                 className="tnum h-16 pr-12 text-center text-3xl font-bold tracking-[0.4em]"
               />
               <button
