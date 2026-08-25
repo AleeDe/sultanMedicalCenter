@@ -97,6 +97,8 @@ export type TokenReceipt = IssuedToken & {
 };
 
 export type ClinicSetting = {
+  /** Prefix on newly issued MRNs, e.g. "MRN" in MRN-260825-0417. */
+  mrn_prefix: string;
   name: string;
   address: string;
   phone: string;

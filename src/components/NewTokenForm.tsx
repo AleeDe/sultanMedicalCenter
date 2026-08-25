@@ -674,7 +674,12 @@ export function NewTokenForm({
                     ref={phoneRef}
                     value={query}
                     autoComplete="off"
-                    placeholder="BT-260825-0417  ·  03xx-xxxxxxx  ·  name"
+                    /*
+                      Built from the clinic's real prefix rather than hardcoded,
+                      so changing it stays the one-row setting 0018 designed it
+                      to be instead of becoming a deploy.
+                    */
+                    placeholder={`${clinic.mrn_prefix}-260825-0417  ·  03xx-xxxxxxx  ·  name`}
                     onChange={(e) => {
                       setQuery(e.target.value);
                       setQueryKind(null);

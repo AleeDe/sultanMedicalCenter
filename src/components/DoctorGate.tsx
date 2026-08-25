@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { signInDoctor, signOut as endSession } from "@/app/actions/auth";
 import { Alert, Button, Card, DoctorAvatar } from "@/components/ui";
-import { IconLock, IconStethoscope } from "@/components/icons";
+import { IconEye, IconEyeOff, IconLock, IconStethoscope } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import type { Doctor } from "@/lib/types";
 
@@ -43,6 +43,7 @@ export function DoctorGate({
     return saved ? Number(saved) : null;
   });
   const [pin, setPin] = useState("");
+  const [shown, setShown] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnDefault, setWarnDefault] = useState(false);
   const [pending, start] = useTransition();
@@ -203,19 +204,43 @@ export function DoctorGate({
 
         {picked !== null && (
           <>
-            <input
-              ref={pinRef}
-              type="password"
-              inputMode="numeric"
-              autoComplete="off"
-              maxLength={6}
-              value={pin}
-              aria-label="Doctor PIN"
-              placeholder="••••"
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={(e) => e.key === "Enter" && pin.length >= 4 && submit()}
-              className="tnum mx-auto mt-5 h-16 max-w-[240px] text-center text-3xl font-bold tracking-[0.4em]"
-            />
+            {/*
+              Reveal, same as the other two gates. A doctor signing in on a
+              tablet between patients cannot tell a mistyped digit from a wrong
+              PIN, and the lockout treats them identically.
+            */}
+            <div className="relative mx-auto mt-5 w-full max-w-[280px]">
+              <input
+                ref={pinRef}
+                type={shown ? "text" : "password"}
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={6}
+                value={pin}
+                aria-label="Doctor PIN"
+                placeholder="••••"
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => e.key === "Enter" && pin.length >= 4 && submit()}
+                className="tnum h-16 pr-12 text-center text-3xl font-bold tracking-[0.4em]"
+              />
+              <button
+                type="button"
+                onClick={() => setShown((v) => !v)}
+                tabIndex={-1}
+                aria-label={shown ? "Hide PIN" : "Show PIN"}
+                aria-pressed={shown}
+                title={shown ? "Hide PIN" : "Show PIN"}
+                className="absolute right-1.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center
+                  justify-center rounded-[var(--r-sm)] text-muted transition-colors
+                  hover:bg-[var(--hover)] hover:text-[var(--ink-2)]"
+              >
+                {shown ? (
+                  <IconEyeOff className="h-5 w-5" />
+                ) : (
+                  <IconEye className="h-5 w-5" />
+                )}
+              </button>
+            </div>
 
             {error && (
               <div className="mt-3">

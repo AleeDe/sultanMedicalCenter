@@ -77,7 +77,7 @@ export async function getSeries(): Promise<TokenSeries[]> {
 
 export async function getClinic(): Promise<ClinicSetting> {
   const [row] = await sql<ClinicSetting[]>`
-    select name, address, phone, footer_note, paper_width
+    select name, address, phone, footer_note, paper_width, mrn_prefix
       from clinic_setting where id = 1
   `;
   return row;

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { signInAdmin, signOut } from "@/app/actions/auth";
 import { Alert, Button, Card } from "@/components/ui";
-import { IconLock } from "@/components/icons";
+import { IconEye, IconEyeOff, IconLock } from "@/components/icons";
 
 const IDLE_MS = 5 * 60 * 1000;
 
@@ -24,6 +24,7 @@ export function AdminGate({ children }: { children?: React.ReactNode }) {
   const router = useRouter();
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin] = useState("");
+  const [shown, setShown] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnDefault, setWarnDefault] = useState(false);
   const [pending, start] = useTransition();
@@ -119,19 +120,45 @@ export function AdminGate({ children }: { children?: React.ReactNode }) {
           continue.
         </p>
 
-        <input
-          ref={inputRef}
-          type="password"
-          inputMode="numeric"
-          autoComplete="off"
-          maxLength={6}
-          value={pin}
-          aria-label="Admin PIN"
-          onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-          onKeyDown={(e) => e.key === "Enter" && pin.length >= 4 && submit()}
-          className="tnum mx-auto mt-5 h-14 max-w-[220px] text-center text-2xl font-bold tracking-[0.4em]"
-          placeholder="••••"
-        />
+        {/*
+          Centred and wide, unlike the two sign-in screens: this card is
+          itself centred, and a left-aligned field with a leading icon would
+          sit oddly in it. The reveal is still needed — a mistyped digit is
+          otherwise indistinguishable from a wrong PIN, and the lockout counts
+          both the same.
+        */}
+        <div className="relative mx-auto mt-5 w-full max-w-[260px]">
+          <input
+            ref={inputRef}
+            type={shown ? "text" : "password"}
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={6}
+            value={pin}
+            aria-label="Admin PIN"
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+            onKeyDown={(e) => e.key === "Enter" && pin.length >= 4 && submit()}
+            className="tnum h-14 pr-12 text-center text-2xl font-bold tracking-[0.4em]"
+            placeholder="••••"
+          />
+          <button
+            type="button"
+            onClick={() => setShown((v) => !v)}
+            tabIndex={-1}
+            aria-label={shown ? "Hide PIN" : "Show PIN"}
+            aria-pressed={shown}
+            title={shown ? "Hide PIN" : "Show PIN"}
+            className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center
+              justify-center rounded-[var(--r-sm)] text-muted transition-colors
+              hover:bg-[var(--hover)] hover:text-[var(--ink-2)]"
+          >
+            {shown ? (
+              <IconEyeOff className="h-[18px] w-[18px]" />
+            ) : (
+              <IconEye className="h-[18px] w-[18px]" />
+            )}
+          </button>
+        </div>
 
         {error && (
           <div className="mt-3">
