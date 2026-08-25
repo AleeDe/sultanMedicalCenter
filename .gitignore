@@ -48,3 +48,7 @@ demo/voices/
 # Supabase CLI local state — link target, cached versions. Machine-specific,
 # not part of the project.
 supabase/.temp/
+
+# Written by print-agent/install-startup.bat on each reception PC — the
+# paths inside are machine-specific, so it is generated rather than committed.
+print-agent/run-agent.vbs
